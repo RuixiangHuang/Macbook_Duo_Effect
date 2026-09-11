@@ -328,9 +328,9 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            // The 4-second preview is still wired up in AppController; only its
+            // button is withheld from the settings window.
             HStack {
-                Button(model.previewing ? t("Stop preview", "停止预览") : t("Preview 4s", "预览 4 秒")) { model.preview?() }
-                    .disabled(!model.permission || !model.enabled)
                 Spacer()
                 Button(t("Quit", "退出")) { model.quit?() }.buttonStyle(.plain).foregroundStyle(.secondary)
             }

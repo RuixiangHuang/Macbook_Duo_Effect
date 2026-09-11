@@ -19,8 +19,6 @@ bar shows the live angle.
 4. Below the threshold, the threshold angle acts as the virtual reference plane:
    the image narrows and stretches around the bottom hinge while progressively
    dimming and blurring. The menu bar can pause or quit at any time.
-5. **Preview 4s** temporarily simulates a smaller angle, then hands control back
-   to the real sensor.
 
 Only the built-in display is affected, menu bar included. The settings window
 stays readable, and the effect layer never intercepts the mouse, so the screen
@@ -64,9 +62,9 @@ Screen Recording grant on every rebuild.
 
 With Screen Recording granted, check that: the image blurs progressively below
 the threshold and is completely clear when reopened to it; the background keeps
-updating while windows move and ordinary video plays; the preview ends on its
-own; pause and quit restore the original image; external displays stay untouched;
-and no effect lingers after lock, sleep or wake.
+updating while windows move and ordinary video plays; pause and quit restore
+the original image; external displays stay untouched; and no effect lingers
+after lock, sleep or wake.
 
 ## Effect model
 
