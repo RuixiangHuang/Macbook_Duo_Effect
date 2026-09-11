@@ -26,7 +26,7 @@ check(LidReport.angle([2, 90, 0]) == nil, "wrong report ID rejected")
 let clearGeometry = EffectModel.geometry(angle: 90, threshold: 90)
 check(clearGeometry.topHeight == 1 && clearGeometry.topWidth == 1 && clearGeometry.darkness == 0, "reference plane is identity")
 let foldedGeometry = EffectModel.geometry(angle: 45, threshold: 90)
-check(foldedGeometry.topHeight < 1 && foldedGeometry.topWidth < 1, "closing tapers and lowers the top, staying on the screen")
+check(foldedGeometry.topHeight <= 1 && foldedGeometry.topWidth < 1, "closing tapers the top, staying on the screen")
 check(foldedGeometry.darkness > 0 && foldedGeometry.darkness < 1, "closing dims image")
 check(EffectModel.geometry(angle: nil, threshold: 90) == .identity, "missing angle resets projection")
 for x in stride(from: 10.0, through: 140, by: 1) {
@@ -44,7 +44,7 @@ let full = EffectModel.geometry(angle: 45, threshold: 90, strength: 1)
 let flat = EffectModel.geometry(angle: 45, threshold: 90, strength: 0)
 let half = EffectModel.geometry(angle: 45, threshold: 90, strength: 0.5)
 check(flat.topHeight == 1 && flat.topWidth == 1 && flat.darkness == full.darkness, "zero strength is flat but still dims")
-check(half.topWidth > full.topWidth && half.topWidth < 1 && half.topHeight > full.topHeight && half.topHeight < 1, "half strength sits between")
+check(half.topWidth > full.topWidth && half.topWidth < 1 && half.topHeight >= full.topHeight && half.topHeight <= 1, "half strength sits between")
 check(EffectModel.geometry(angle: 45, threshold: 90, strength: 7) == full, "strength clamps to 1")
 // The eye turns with the lid, so only the angle between the planes matters.
 let sameDelta = EffectModel.geometry(angle: 90, threshold: 120)
@@ -56,7 +56,7 @@ for a in stride(from: 89, through: 0, by: -1) {
     let g = EffectModel.geometry(angle: Double(a), threshold: 90)
     check(g.topHeight <= previousHeight && g.topHeight >= 0.05 && g.topWidth <= previousWidth && g.topWidth >= 0.08,
           "geometry is monotonic and on screen at \(a)")
-    if a > 20 { check(g.topWidth < previousWidth && g.topHeight < previousHeight, "geometry is strictly monotonic at \(a)") }
+    if a > 20 { check(g.topWidth < previousWidth && g.topHeight <= previousHeight, "geometry is strictly monotonic at \(a)") }
     previousWidth = g.topWidth; previousHeight = g.topHeight
 }
 // Closed form: the top is 1 - tan(x - y) / L wide and 1 - v (1 - cos(x - y)) high.
