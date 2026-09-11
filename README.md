@@ -9,7 +9,7 @@
 Duo Effect reads your MacBook's real lid angle and tilts, dims and blurs the
 built-in display as you close it, with controls in the menu bar.
 
-*[中文说明](README.zh-CN.md)*
+*[中文](README.zh-CN.md)*
 
 </div>
 
