@@ -358,7 +358,7 @@ struct SettingsView: View {
                     .accessibilityLabel(t("Perspective strength", "透视强度"))
                 Text(t("0% keeps the image flat and only dims and blurs; 100% fully compensates for the lid angle.",
                        "0% 画面不变形、只暗化和模糊；100% 完整补偿盖子角度。"))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(.vertical, 2)
 
             if !model.permission {
