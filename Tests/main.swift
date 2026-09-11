@@ -29,12 +29,25 @@ let foldedGeometry = EffectModel.geometry(angle: 45, threshold: 90)
 check(foldedGeometry.topHeight > 1 && foldedGeometry.topWidth < 1, "closing stretches and narrows around bottom hinge")
 check(foldedGeometry.darkness > 0 && foldedGeometry.darkness < 1, "closing dims image")
 check(EffectModel.geometry(angle: nil, threshold: 90) == .identity, "missing angle resets projection")
-for x in [10.0, 90, 140] {
+for x in stride(from: 10.0, through: 140, by: 1) {
     for a in 0...140 {
         let g = EffectModel.geometry(angle: Double(a), threshold: x)
         check(g.topHeight.isFinite && g.topWidth > 0 && g.darkness <= 0.65, "bounded geometry")
+        check(g.topHeight <= 3 && g.topWidth >= 0.08, "projection is clamped")
+        if Double(a) < x {
+            check(g != .identity, "projection never silently drops out below the threshold at \(a)/\(x)")
+        }
     }
 }
+// The exact projection follows the reference angle, not just the difference:
+// above 90° the reference plane leans away, so its content shrinks onto the lid.
+let leaning = EffectModel.geometry(angle: 90, threshold: 120)
+check(leaning.topHeight < 1 && leaning.topWidth < 1, "reference above vertical shrinks rather than stretches")
+// Beyond maximumDelta the geometry freezes while dimming keeps going.
+let atCap = EffectModel.geometry(angle: 30, threshold: 90)
+let pastCap = EffectModel.geometry(angle: 10, threshold: 90)
+check(atCap.topHeight == pastCap.topHeight && atCap.topWidth == pastCap.topWidth && pastCap.darkness > atCap.darkness,
+      "geometry freezes past the cap while darkness continues")
 var motion = EffectMotion()
 let targetGeometry = EffectModel.geometry(angle: 45, threshold: 90)
 motion.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60)

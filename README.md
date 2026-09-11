@@ -1,139 +1,86 @@
+<div align="center">
+
 # Duo Effect
+
+**Your screen lingers, blurring as the lid closes.**
+
+<img src="./docs/effect-preview.png" width="800" alt="Duo Effect at 90°, 70° and 45° lid angles">
+
+Duo Effect reads your MacBook's real lid angle and tilts, dims and blurs the
+built-in display as you close it, with controls in the menu bar.
 
 *[中文说明](README.zh-CN.md)*
 
-A native macOS menu bar app that reads your MacBook's real lid angle and
-applies perspective, dimming and blur to the built-in display as the lid closes.
+</div>
 
-## Running
+<hr>
 
-Open `dist/Duo Effect.app`. The settings window appears on launch and the menu
-bar shows the live angle.
+- **Real lid angle:** Reads the hinge sensor built into Apple Silicon MacBooks, so the effect follows your hand as you close the lid.
+- **Live screen content:** Captures the built-in display with ScreenCaptureKit and re-renders it on the GPU with Metal at native Retina resolution and 60 fps.
+- **Adjustable:** Pick the angle where the effect begins and how strong the blur gets. English and 简体中文 interface, switchable in the app.
+- **Stays out of your way:** Clicks pass straight through to your apps, external displays are untouched, and normal lid-close sleep is preserved.
 
-0. The interface is English by default. The globe button in the top-left switches
-   between English and 简体中文; the choice is saved automatically.
-1. Click **Grant Screen Recording…** and allow **Duo Effect** in System Settings.
-2. If macOS asks you to reopen the app, quit it and open it again.
-3. Adjust **Clear threshold**, 90° by default. Closed is 0°; at or above the
-   threshold the effect is removed.
-4. Below the threshold, the threshold angle acts as the virtual reference plane:
-   the image narrows and stretches around the bottom hinge while progressively
-   dimming and blurring. The menu bar can pause or quit at any time.
+> [!NOTE]
+> Nothing is recorded to disk, no audio is captured, and nothing goes over the network. Screen frames stay in memory only while the effect is active.
 
-Only the built-in display is affected, menu bar included. The settings window
-stays readable, and the effect layer never intercepts the mouse, so the screen
-remains fully usable. Normal lid-close sleep is preserved and settings are saved
-automatically. The effect is removed whenever the sensor cannot be read, screen
-capture fails, or the session sleeps or goes inactive.
+## Download
 
-## Requirements and caveats
+No prebuilt download yet. Build it yourself with the steps below; a release will be linked here once one is published.
 
-- macOS 14 or newer, an Apple Silicon MacBook with a readable lid angle sensor.
-- Verified on an M1 Pro MacBook Pro reading 112°; the app also shows live sensor
-  status.
-- Screen Recording permission drives the local live blur. Nothing is recorded to
-  disk, no audio is captured, and nothing goes over the network.
-- The lid angle HID protocol is not a documented Apple guarantee; future macOS
-  releases may break compatibility.
-- Signed with a local Apple Development certificate, not Developer ID notarized;
-  this build targets the machine that produced it. Certificate-bound signing is
-  what keeps an existing privacy grant valid across rebuilds.
-- Protected video content may not be capturable by the system. This is a visual
-  effect tool, not a privacy screen or a security boundary.
+Requires macOS 14 or later and an Apple Silicon MacBook with a lid angle sensor.
+The app shows live sensor status, so you will know right away if your machine is supported.
 
-## Building and checking
+## Getting started
 
-Requires Xcode or compatible Apple Swift tooling and an Apple Development or
-Developer ID signing identity in your keychain. No third-party packages. A single
-identity is picked automatically; with several, set `CODE_SIGN_IDENTITY` to the
-certificate SHA-1. Quit a running copy before building.
+1. Open **Duo Effect**. The settings window appears and the menu bar shows the live lid angle.
+2. Click **Grant Screen Recording…** and allow **Duo Effect** in System Settings. This is what lets the app blur what is on screen.
+3. If macOS asks you to reopen the app, quit it and open it again.
+4. Slowly close the lid. Below the **Clear threshold** (90° by default) the picture tilts, dims and blurs; open the lid back past the threshold and it snaps back to normal.
+
+Use the menu bar icon to pause, quit, or turn on debug logging. Settings are saved automatically.
+
+<img src="./docs/settings-en.png" width="400" alt="Duo Effect settings window">
+
+## Build
+
+Requires Xcode (or the Apple Swift toolchain) and an **Apple Development** or **Developer ID** signing certificate in your keychain. No third-party packages.
 
 ```sh
-./scripts/test.sh
 ./scripts/build.sh
-"dist/Duo Effect.app/Contents/MacOS/DuoEffect" --probe
-"dist/Duo Effect.app/Contents/MacOS/DuoEffect" --self-check
 ```
 
-The build refuses ad-hoc signing on purpose: it would invalidate the stored
-Screen Recording grant on every rebuild.
+This produces `dist/Duo Effect.app`. Open it from Finder. If you have more than one signing certificate, set `CODE_SIGN_IDENTITY` to the certificate's SHA-1 first. Quit any running copy before rebuilding.
 
-## Manual acceptance
+The build deliberately refuses ad-hoc signing: macOS ties the Screen Recording permission to the signing certificate, and an ad-hoc signature would make you re-grant it after every rebuild.
 
-With Screen Recording granted, check that: the image blurs progressively below
-the threshold and is completely clear when reopened to it; the background keeps
-updating while windows move and ordinary video plays; pause and quit restore
-the original image; external displays stay untouched; and no effect lingers
-after lock, sleep or wake.
+For tests, benchmarks, debug logging and the details of the effect model, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-## Effect model
+## Known limitations
 
-The virtual viewpoint sits 4 screen heights in front of the reference plane;
-this is not eye tracking. The projected difference angle is capped at 60°. Both
-constants are `EffectModel.viewerDistance` and `EffectModel.maximumDelta`: a
-nearer viewpoint or a higher cap distorts harder, and the original 2.5 / 75°
-collapsed the image to a sliver well before the lid was closed. Maximum dimming is 65%,
-and gaussian blur strength is adjustable. Capture runs at native Retina
-resolution and 60fps, with Core Image writing straight into a Metal display
-texture. Perspective, dimming and blur are smoothed together over time, and
-capture only runs while the effect is active.
+- Only MacBooks with a readable lid angle sensor can use the effect. Verified on an M1 Pro MacBook Pro; the app reports when no sensor is found.
+- The effect applies only to the built-in display, menu bar included.
+- The effect is removed when the Mac sleeps, the screen locks, or the sensor or screen capture becomes unavailable.
+- Protected video (DRM) may not be capturable by the system and can appear black under the effect.
+- The lid angle protocol is not documented by Apple, so a future macOS release could break it.
+- This is a visual effect, not a privacy screen or a security boundary.
 
-- `./scripts/render-check.sh` writes `docs/effect-preview.png`, validating the
-  image pipeline on synthetic frames without reading screen content.
-- `./scripts/settings-render.sh` renders the settings window offscreen in both
-  languages to `docs/settings-en.png` and `docs/settings-zh.png`. ImageRenderer
-  cannot rasterize AppKit controls, so the language menu, the toggle and the
-  sliders appear as placeholder bars.
-- `./scripts/make-icon.sh` regenerates `Resources/AppIcon.icns` from
-  `Resources/AppIcon.png`; replace that 1024×1024 image to change the icon.
+## Troubleshooting
 
-## Performance check
-
-`./scripts/benchmark.sh` compares the old bitmap output against the Metal output
-on a 3024×1964 synthetic frame. First local measurements were medians of about
-12.9ms and 4.7ms respectively, which is not an end-to-end frame rate.
-`./scripts/metal-check.sh` verifies actual texture orientation. The core tests
-cover both time-based interpolation and instant clearing at the threshold.
-
-## If the permission never takes effect
-
-Early ad-hoc signed builds can leave a stored grant that does not match the
-current build. To migrate, quit the app, reset only this app's record, then
-reopen and grant once in System Settings:
+**The effect never starts after granting permission.** An older build may have left a stale permission record. Quit the app, reset only this app's record, then reopen and grant once more:
 
 ```sh
 tccutil reset ScreenCapture local.ruixiang.macbookduo
 ```
 
-Check the permission status shown in the app window. Running `--self-check`
-directly from a terminal reports the permission state of the terminal that
-launched it, which is not evidence that the GUI app is granted.
+**Something else went wrong.** Turn on **Start Debug Logging** in the menu bar and check `~/Library/Logs/Duo Effect/debug.log`.
 
-## References
+## Acknowledgements
 
-- [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor): sensor HID
-  usage and feature-report protocol information.
-- [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit):
-  local screen capture excluding the app itself.
+- [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor) for the lid angle sensor protocol information.
+- Apple's [ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit) for local screen capture.
 
-The code is an independent implementation based on that interface information;
-no external code or packages are vendored.
-
-## Debug mode
-
-Duo Effect is a menu bar app with no console, so a sudden exit otherwise leaves
-nothing behind but a system crash report. Turn on **Start Debug Logging** in the
-status item menu, or launch with `--debug`, and lifecycle events are written to
-`~/Library/Logs/Duo Effect/debug.log` (also visible in Console.app under the
-`local.ruixiang.macbookduo` subsystem). **Show Debug Log…** reveals the file.
-
-The log records capture start and stop, renderer creation and release, effect
-on/off transitions with the angle and threshold, sensor and permission changes,
-sleep/wake suspensions, and errors. Per-frame output is deliberately omitted;
-only anomalous frames are logged. The file rotates past 4 MB.
+This project is built with AI assistance. The code is an independent implementation; no external code or packages are vendored.
 
 ## License
 
-[MIT](LICENSE). The app is not sandboxed: beyond the Screen Recording grant it
-runs with your user's full file access and talks to IOKit HID directly, which is
-what reading the lid angle requires.
+[MIT](LICENSE). The app is not sandboxed: beyond the Screen Recording grant it runs with your user's full file access and talks to IOKit directly, which is what reading the lid angle requires.

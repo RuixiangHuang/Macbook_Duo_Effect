@@ -1,82 +1,84 @@
+<div align="center">
+
 # Duo Effect
+
+**画面停留，随合盖渐入虚化。**
+
+<img src="./docs/effect-preview.png" width="800" alt="Duo Effect 在 90°、70°、45° 开合角度下的效果">
+
+Duo Effect 读取 MacBook 的真实开合角度，在你合上盖子的过程中让内置屏幕的画面倾斜、变暗、虚化，并在菜单栏提供控制。
 
 *[English](README.md)*
 
-原生 macOS 菜单栏应用，按 MacBook 的真实开合角度，让内置屏幕中的画面产生透视、暗化和虚化。
+</div>
 
-## 运行
+<hr>
 
-打开 `dist/Duo Effect.app`。应用启动后显示设置窗口，菜单栏显示实时角度。
+- **真实开合角度：** 读取 Apple Silicon MacBook 内置的铰链传感器，效果跟随你的手实时变化。
+- **实时屏幕画面：** 用 ScreenCaptureKit 捕获内置屏幕，再用 Metal 在 GPU 上以 Retina 原始分辨率、60 帧/秒重新渲染。
+- **可调节：** 自己决定效果从哪个角度开始、模糊到什么程度。界面支持 English 和简体中文，可在应用内切换。
+- **不打扰使用：** 点击直接穿透到下方应用，外接显示器不受影响，正常合盖睡眠保持不变。
 
-0. 界面默认英语。左上角的地球按钮可切换 English / 简体中文，选择自动保存。
-1. 点击「授权屏幕录制…」，在系统设置中允许 **Duo Effect**。
-2. 如果 macOS 要求重新打开，退出应用后再次打开。
-3. 调整「清晰阈值」，默认 90°。合盖为 0°；达到或超过阈值时移除效果。
-4. 以 x 为虚拟画面参考平面，低于阈值时，以底部铰链为基准产生透视收窄和拉伸，同时逐渐变暗、虚化。菜单栏可随时暂停或退出。
+> [!NOTE]
+> 不写任何内容到磁盘，不录音，不联网。屏幕画面只在效果生效期间停留在内存里。
 
-仅内置屏幕生效，顶部菜单栏也参与透视、暗化和虚化。设置窗口保持可读；效果层不拦截鼠标，打开至阈值后恢复正常操作画面。系统合盖睡眠保持正常。设置自动保存。传感器无法读取、屏幕捕获失败或会话进入睡眠/非活动状态时移除效果。
+## 下载
 
-## 权限与兼容性
+目前还没有预编译的下载包，请按下方步骤自行构建；发布 Release 后会在这里附上链接。
 
-- macOS 14 或更新，Apple Silicon MacBook，且具有可读开合角度传感器。
-- 本机 M1 Pro MacBook Pro 已成功读取 112°；实际运行也会显示传感器状态。
-- 屏幕录制权限用于本机实时模糊；不录音，不写屏幕视频到磁盘，不联网。
-- 角度传感器的 HID 协议未经 Apple 公开保证，未来系统升级可能影响兼容性。
-- 使用本机 Apple Development 证书签名，未做 Developer ID 公证；当前构建面向本机使用。稳定证书签名可避免每次重编译使已有隐私授权失效。
-- 受保护的视频内容可能无法被系统捕获。此应用是视觉效果工具，不是隐私屏幕或安全屏障。
+需要 macOS 14 或更新，以及带开合角度传感器的 Apple Silicon MacBook。应用会显示传感器实时状态，是否支持一眼可知。
 
-## 构建和检查
+## 开始使用
 
-需要 Xcode 或兼容的 Apple Swift 编译工具，以及钥匙串中可用的 Apple Development / Developer ID 签名身份，不依赖第三方软件包。仅有一个身份时自动选择；多个身份时用 CODE_SIGN_IDENTITY 指定证书 SHA-1。构建前退出正在运行的应用。
+1. 打开 **Duo Effect**。设置窗口出现，菜单栏显示实时开合角度。
+2. 点击「授权屏幕录制…」，在系统设置中允许 **Duo Effect**。这是应用能模糊屏幕内容的前提。
+3. 如果 macOS 要求重新打开应用，退出后再次打开即可。
+4. 慢慢合上盖子。低于「清晰阈值」（默认 90°）后画面开始倾斜、变暗、虚化；重新打开超过阈值，画面立即恢复正常。
+
+菜单栏图标可以暂停、退出或开启调试日志。设置自动保存。
+
+<img src="./docs/settings-zh.png" width="400" alt="Duo Effect 设置窗口">
+
+## 构建
+
+需要 Xcode（或 Apple Swift 工具链），以及钥匙串中的 **Apple Development** 或 **Developer ID** 签名证书。不依赖第三方软件包。
 
 ```sh
-./scripts/test.sh
 ./scripts/build.sh
-"dist/Duo Effect.app/Contents/MacOS/DuoEffect" --probe
-"dist/Duo Effect.app/Contents/MacOS/DuoEffect" --self-check
 ```
 
-## 人工验收
+构建产物是 `dist/Duo Effect.app`，从访达打开即可。如果钥匙串里有多个签名证书，先把 `CODE_SIGN_IDENTITY` 设为证书的 SHA-1。重新构建前先退出正在运行的应用。
 
-授权屏幕录制后，检查：低于 x 时逐渐模糊，重新打开至 x 时完全清晰；移动窗口和播放普通视频时背景持续更新；暂停和退出恢复原画面；外接显示器保持正常；锁屏、睡眠和唤醒后无残留效果。
+构建脚本故意拒绝临时（ad-hoc）签名：macOS 把屏幕录制权限绑定在签名证书上，临时签名会让你每次重新构建后都得重新授权。
 
-## 效果模型
+测试、性能检查、调试日志和效果模型的细节见 [docs/DEVELOPMENT.zh-CN.md](docs/DEVELOPMENT.zh-CN.md)。
 
-虚拟观察点固定在参考平面前方 4 个屏幕高度处；不是眼动追踪。投影差角上限 60°。这两个常数是 `EffectModel.viewerDistance` 和 `EffectModel.maximumDelta`：视点越近、上限越高，变形越猛；最初的 2.5 / 75° 会在远未合盖时就把画面压成一条。最大暗化为 65%，高斯模糊强度可调。Retina 原始分辨率捕获，60 帧/秒，Core Image 直接写入 Metal 显示纹理；透视、暗化与模糊按时间统一平滑，仅在效果生效时运行捕获。
+## 已知限制
 
-`./scripts/render-check.sh` 生成 `docs/effect-preview.png`，用合成画面验证图像处理链，不读取屏幕内容。
+- 只有带可读开合角度传感器的 MacBook 才能使用。已在 M1 Pro MacBook Pro 上验证；找不到传感器时应用会提示。
+- 效果只作用于内置屏幕，顶部菜单栏也包含在内。
+- 睡眠、锁屏，或传感器、屏幕捕获不可用时，效果会被移除。
+- 受保护的视频（DRM）可能无法被系统捕获，在效果下可能显示为黑色。
+- 开合角度协议未经 Apple 公开文档化，未来的 macOS 版本可能导致失效。
+- 这是视觉效果，不是隐私屏，也不是安全屏障。
 
-`./scripts/settings-render.sh` 离屏渲染设置窗口的英文和中文版本到 `docs/settings-en.png` 和 `docs/settings-zh.png`，验证文案和排版。ImageRenderer 无法栅格化 AppKit 控件，语言菜单、开关和滑块在输出里是占位色块。
+## 常见问题
 
-`./scripts/make-icon.sh` 从 `Resources/AppIcon.png` 重新生成 `Resources/AppIcon.icns`；换图标时替换那张 1024×1024 图再跑它。
-
-## 技术参考
-
-- [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor)：传感器 HID usage 与 feature-report 协议信息。
-- [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)：排除应用自身的本地屏幕捕获。
-
-代码按上述接口信息独立实现；没有引入外部代码或软件包。
-
-## 授权一直不生效
-
-早期临时签名构建可能留下与新版不匹配的授权记录。修复版使用证书签名；从早期版迁移需要退出应用，仅重置本应用旧记录，再重新打开并在系统设置中授权一次：
+**授权后效果一直不出现。** 旧版本可能留下了不匹配的授权记录。退出应用，只重置本应用的记录，再重新打开并授权一次：
 
 ```sh
 tccutil reset ScreenCapture local.ruixiang.macbookduo
 ```
 
-请检查应用窗口中的授权状态。直接从终端运行 --self-check 的权限结果可能属于启动它的终端上下文，不能作为图形应用已获授权的证据。
+**出了别的问题。** 在菜单栏开启「开启调试日志」，查看 `~/Library/Logs/Duo Effect/debug.log`。
 
-## 流畅度检查
+## 致谢
 
-`./scripts/benchmark.sh` 对 3024×1964 合成画面比较旧位图输出与 Metal 输出。初次本机测量中位数分别约 12.9ms / 4.7ms（不代表端到端帧率）。`./scripts/metal-check.sh` 验证实际纹理上下方向。核心测试同时覆盖按时间插值和达到阈值立即清晰。
+- [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor)：开合角度传感器协议信息。
+- Apple [ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)：本地屏幕捕获。
 
-## 调试模式
-
-Duo Effect 是菜单栏应用，没有控制台，突然退出时除了系统崩溃报告什么都留不下。在菜单栏菜单里选「开启调试日志」，或用 `--debug` 启动，生命周期事件会写入 `~/Library/Logs/Duo Effect/debug.log`（也可在「控制台」中按 `local.ruixiang.macbookduo` 子系统查看）。「显示调试日志…」会在访达中定位该文件。
-
-日志记录捕获的启停、渲染器的创建与释放、效果开关及当时的角度和阈值、传感器与权限变化、睡眠唤醒挂起，以及错误。逐帧输出被刻意省略，只记录异常帧。文件超过 4 MB 自动轮转。
+本项目在 AI 辅助下完成。代码为独立实现，未引入任何外部代码或软件包。
 
 ## 许可证
 
-[MIT](LICENSE)。应用未启用沙盒：除屏幕录制授权外，它以当前用户身份拥有完整文件访问权限，并直接调用 IOKit HID——读取开合角度需要这样做。
+[MIT](LICENSE)。应用未启用沙盒：除屏幕录制授权外，它以当前用户身份拥有完整文件访问权限，并直接调用 IOKit——读取开合角度需要这样做。
