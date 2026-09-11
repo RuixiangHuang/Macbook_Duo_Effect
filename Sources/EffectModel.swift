@@ -8,29 +8,42 @@ struct EffectGeometry: Equatable {
 }
 
 enum EffectModel {
-    /// Content beyond this stretch is a sliver at the bottom of the lid anyway;
-    /// 1 / cos(x - y) is unbounded as the planes approach a right angle.
+    /// The viewer's eye sits on the reference plane's normal through its middle,
+    /// this many screen heights away. Nearer means the lid's top, which leans
+    /// toward the eye, looms larger and the content must narrow more to match
+    /// the reference screen; 2.5 was the original tuning. Very far approaches a
+    /// parallel projection with no narrowing at all.
+    static let eyeDistance = 5.0
+    /// Content stretched past this is a sliver at the bottom of the lid anyway.
     private static let maximumStretch = 3.0
 
     /// The screen is treated as fixed at the reference angle x while the lid is
-    /// really at y, and the viewer looks straight at that reference screen: the
-    /// line of sight is perpendicular to plane x and does not move with the lid.
-    /// The rays are parallel, so no point of the image moves sideways. Seen along
-    /// that line the lid, tilted by x - y, is foreshortened to cos(x - y) of its
-    /// height, so the content is stretched by 1 / cos(x - y) along the lid from
-    /// the shared hinge and whatever lands past the lid's top edge is not shown:
-    /// `topHeight` (> 1) is where the content's top would land, `topWidth` is 1.
-    /// `strength` scales how much of that is applied: 0 leaves the image flat
-    /// (only dimming and blur), 1 is the full geometry.
+    /// really at y, and the viewer faces that reference screen. Each point of the
+    /// content on plane x is projected along the eye's ray onto the lid, so the
+    /// eye sees it where it would be if the lid had not moved. The lid leans
+    /// toward the eye by x - y, so along the lid the content stretches from the
+    /// shared hinge (`topHeight` > 1, the part past the lid's top edge is not
+    /// shown) and its top edge, which the eye sees closer and larger than the
+    /// reference, is drawn narrower (`topWidth` < 1). `strength` scales how
+    /// much of that is applied: 0 leaves the image flat, 1 is the full geometry.
     static func geometry(angle: Double?, threshold: Double, strength: Double = 1) -> EffectGeometry {
         guard let angle, angle.isFinite, (0...360).contains(angle),
               threshold.isFinite, threshold > 0, angle < threshold else { return .identity }
         let amount = min(1, max(0, 1 - angle / threshold))
         let darkness = 0.65 * amount * amount * (3 - 2 * amount)
         let k = strength.isFinite ? min(1, max(0, strength)) : 1
-        let delta = (threshold - angle) * .pi / 180
-        let stretch = delta < .pi / 2 ? min(maximumStretch, 1 / cos(delta)) : maximumStretch
-        return EffectGeometry(topHeight: 1 + k * (stretch - 1), topWidth: 1, darkness: darkness)
+        // In the reference plane's frame: u along it from the hinge, n its normal
+        // toward the eye at (0.5, L). The content's top is (1, 0); the lid is the
+        // line through the origin at x - y toward the eye. The ray from the eye
+        // through the top meets that line at parameter t, which is also the
+        // lateral scale, and lands at 0.5(1 + t) / cos(x - y) along the lid.
+        let delta = min(89.0, threshold - angle) * .pi / 180
+        let half = 0.5 * tan(delta)
+        let t = (eyeDistance - half) / (eyeDistance + half)
+        let stretch = t > 0 ? 0.5 * (1 + t) / cos(delta) : maximumStretch
+        // Clamp after blending so the bounds hold exactly at every strength.
+        return EffectGeometry(topHeight: min(maximumStretch, 1 + k * (stretch - 1)),
+                              topWidth: max(0.08, 1 - k * (1 - t)), darkness: darkness)
     }
 
     static func radius(angle: Double?, threshold: Double, maximum: Double, enabled: Bool) -> Double {
