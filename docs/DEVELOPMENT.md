@@ -35,26 +35,7 @@ after lock, sleep or wake.
 
 ## Effect model
 
-Below the clear threshold the screen is treated as fixed at the threshold
-angle while the lid really moves, and the viewer looks straight at that
-reference screen with the eye level with its top edge, 5 screen heights away
-(`EffectModel.eyeDistance`). The lid leans toward the eye by x − y, so its
-top edge is seen closer and larger than the reference screen's, and the
-content's top is drawn narrower by tan(x − y) / eyeDistance to compensate:
-88% wide at 30° apart, 65% at 60°. Relative to the lid the content tilts
-away by x − y, so its top is also lowered by the foreshortening cos(x − y),
-scaled by `EffectModel.verticalShrink`: 92% high at 30° apart, 70% at 60°,
-with the strip above it empty. The full projection would instead stretch the
-content past the lid's top edge; that part is deliberately left out so the
-image always stays on the screen. Only the angle between the two planes
-matters. The **Perspective** slider scales how much of the geometry is
-applied, from a flat image at 0% to the full taper and shrink at 100%.
-Maximum dimming is 65%, and gaussian
-blur strength is adjustable. Capture runs at native Retina resolution and 60fps,
-with Core Image writing straight into a Metal display texture. Perspective,
-dimming and blur are smoothed together over time, and capture only runs while
-the effect is active. The settings window stays readable, and the effect layer
-never intercepts the mouse.
+The bottom hinge and picture height stay fixed. Closing progressively narrows the top edge using the original taper curve, without the old vertical shrink-then-stretch. Perspective strength blends from flat to full taper. Smoothstep closing progress fades the image to black and increases blur. At the clear threshold the overlay is removed immediately. A spatial mask varies blur continuously from 5% of the current maximum radius at the hinge to 100% at the camera edge using CIMaskedVariableBlur. Metal presentation remains at 60 fps.
 
 - `./scripts/render-check.sh` writes `docs/effect-preview.png`, validating the
   image pipeline on synthetic frames without reading screen content.

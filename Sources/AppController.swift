@@ -42,7 +42,7 @@ final class AppModel: ObservableObject {
         if error != nil { return t("Effect paused · retry needed", "效果已暂停 · 需要重试") }
         if angle == nil { return t("Waiting for the lid angle sensor", "等待角度传感器") }
         if previewing { return t("Previewing · restores in 4s", "正在预览 · 4 秒后自动恢复") }
-        return radius > 0 ? t("Perspective · dimming · blur active", "透视 · 暗化 · 毛玻璃生效中")
+        return radius > 0 ? t("Perspective · fade · blur active", "透视 · 淡出 · 毛玻璃生效中")
                           : t("Screen is clear", "屏幕清晰")
     }
 }
@@ -339,8 +339,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $model.threshold, in: 10...140, step: 1).tint(accent)
                     .accessibilityLabel(t("Clear threshold angle", "清晰阈值角度"))
-                Text(t("\(Int(model.threshold))° is the reference plane; closing further adds perspective, dimming and blur.",
-                       "以 \(Int(model.threshold))° 为画面参考平面；向下合盖时透视变形、变暗和虚化。"))
+                Text(t("\(Int(model.threshold))° is the clear threshold; closing further narrows the top edge and fades the picture.",
+                       "角度 ≥ \(Int(model.threshold))° 时清晰；合盖时梯形顶边逐渐收窄，并淡出、虚化。"))
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Label(t("Maximum blur", "最大模糊强度"), systemImage: "drop.halffull")
@@ -356,8 +356,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $model.perspective, in: 0...1, step: 0.05).tint(accent)
                     .accessibilityLabel(t("Perspective strength", "透视强度"))
-                Text(t("0% keeps the image flat and only dims and blurs; 100% fully compensates for the lid angle.",
-                       "0% 画面不变形、只暗化和模糊；100% 完整补偿盖子角度。"))
+                Text(t("0% keeps the image flat and only dims and blurs; 100% applies the full top-edge taper.",
+                       "0% 画面不变形、只暗化和模糊；100% 完整应用梯形收窄。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(.vertical, 2)
 

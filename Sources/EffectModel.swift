@@ -8,36 +8,19 @@ struct EffectGeometry: Equatable {
 }
 
 enum EffectModel {
-    /// The viewer's eye is level with the top edge of the reference screen and
-    /// this many screen heights in front of it, looking straight at it. Nearer
-    /// means the lid's top, which leans toward the eye, looms larger and the
-    /// content's top must be drawn narrower to match. Very far means no taper.
-    static let eyeDistance = 5.0
-    /// How much of the foreshortening is applied vertically: a plane tilted away
-    /// by x - y appears cos(x - y) as tall, and at 1 the content's top lands
-    /// exactly there, leaving the strip above it empty. 0 keeps the full height.
-    static let verticalShrink = 0.6
-
-    /// The screen is treated as fixed at the reference angle x while the lid is
-    /// really at y, so relative to the lid the content tilts away by x - y. Its
-    /// top edge is drawn narrower by tan(x - y) / eyeDistance (`topWidth`), and
-    /// lower by the foreshortening cos(x - y) scaled by `verticalShrink`
-    /// (`topHeight` <= 1). Both keep the image on the screen: the projection's
-    /// own stretch past the lid's top edge is deliberately not applied.
-    /// `strength` scales how much of the geometry is applied: 0 leaves the
-    /// image flat, 1 is the full taper and shrink.
+    /// Keep the bottom hinge and image height fixed. Only the top edge narrows
+    /// while closing; this avoids the original vertical shrink-then-stretch reversal.
+    /// Fade and blur remain driven by the full close progress.
     static func geometry(angle: Double?, threshold: Double, strength: Double = 1) -> EffectGeometry {
         guard let angle, angle.isFinite, (0...360).contains(angle),
               threshold.isFinite, threshold > 0, angle < threshold else { return .identity }
-        let amount = min(1, max(0, 1 - angle / threshold))
-        let darkness = 0.65 * amount * amount * (3 - 2 * amount)
+        let delta = min(75, threshold - angle) * .pi / 180
+        let originalDepth = 1 / (cos(delta) + 0.2 * sin(delta))
+        let width = max(0.08, 1 - originalDepth * sin(delta) / 2.5)
         let k = strength.isFinite ? min(1, max(0, strength)) : 1
-        let delta = min(89.0, threshold - angle) * .pi / 180
-        let taper = 1 - tan(delta) / eyeDistance
-        let shrink = 1 - verticalShrink * (1 - cos(delta))
-        // Clamp after blending so the bounds hold exactly at every strength.
-        return EffectGeometry(topHeight: max(0.05, 1 - k * (1 - shrink)),
-                              topWidth: max(0.08, 1 - k * (1 - taper)), darkness: darkness)
+        let amount = min(1, max(0, 1 - angle / threshold))
+        return EffectGeometry(topHeight: 1, topWidth: 1 + (width - 1) * k,
+                              darkness: amount * amount * (3 - 2 * amount))
     }
 
     static func radius(angle: Double?, threshold: Double, maximum: Double, enabled: Bool) -> Double {

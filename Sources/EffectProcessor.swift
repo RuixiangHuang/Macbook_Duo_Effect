@@ -22,9 +22,17 @@ enum EffectProcessor {
         ])
         let background = CIImage(color: CIColor.black).cropped(to: input.extent)
         let projected = transformed.composited(over: background).cropped(to: input.extent)
+        // Distance from the bottom hinge controls the local blur radius.
+        // Keep a small blur at the hinge and ramp smoothly to full blur at the camera.
+        let mask = CIFilter(name: "CILinearGradient", parameters: [
+            "inputPoint0": CIVector(x: input.extent.midX, y: input.extent.minY),
+            "inputPoint1": CIVector(x: input.extent.midX, y: input.extent.maxY),
+            "inputColor0": CIColor(red: 0.05, green: 0.05, blue: 0.05),
+            "inputColor1": CIColor.white
+        ])!.outputImage!.cropped(to: input.extent)
         let light = 1 - geometry.darkness
         let output = projected.clampedToExtent()
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
+            .applyingFilter("CIMaskedVariableBlur", parameters: [kCIInputRadiusKey: radius, "inputMask": mask])
             .cropped(to: input.extent)
             .applyingFilter("CIColorMatrix", parameters: [
                 "inputRVector": CIVector(x: light, y: 0, z: 0, w: 0),
