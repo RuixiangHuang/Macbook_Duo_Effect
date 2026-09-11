@@ -26,7 +26,7 @@ check(LidReport.angle([2, 90, 0]) == nil, "wrong report ID rejected")
 let clearGeometry = EffectModel.geometry(angle: 90, threshold: 90)
 check(clearGeometry.topHeight == 1 && clearGeometry.topWidth == 1 && clearGeometry.darkness == 0, "reference plane is identity")
 let foldedGeometry = EffectModel.geometry(angle: 45, threshold: 90)
-check(foldedGeometry.topHeight > 1 && foldedGeometry.topWidth < 1, "closing stretches past the top edge and narrows the top")
+check(foldedGeometry.topHeight == 1 && foldedGeometry.topWidth < 1, "closing tapers the top and stays on the screen")
 check(foldedGeometry.darkness > 0 && foldedGeometry.darkness < 1, "closing dims image")
 check(EffectModel.geometry(angle: nil, threshold: 90) == .identity, "missing angle resets projection")
 for x in stride(from: 10.0, through: 140, by: 1) {
@@ -44,35 +44,29 @@ let full = EffectModel.geometry(angle: 45, threshold: 90, strength: 1)
 let flat = EffectModel.geometry(angle: 45, threshold: 90, strength: 0)
 let half = EffectModel.geometry(angle: 45, threshold: 90, strength: 0.5)
 check(flat.topHeight == 1 && flat.topWidth == 1 && flat.darkness == full.darkness, "zero strength is flat but still dims")
-check(half.topWidth > full.topWidth && half.topWidth < 1 && half.topHeight > 1 && half.topHeight < full.topHeight, "half strength sits between")
+check(half.topWidth > full.topWidth && half.topWidth < 1 && half.topHeight == 1, "half strength sits between")
 check(EffectModel.geometry(angle: 45, threshold: 90, strength: 7) == full, "strength clamps to 1")
 // The eye turns with the lid, so only the angle between the planes matters.
 let sameDelta = EffectModel.geometry(angle: 90, threshold: 120)
 check(sameDelta.topHeight == EffectModel.geometry(angle: 60, threshold: 90).topHeight, "geometry depends on the difference angle only")
-// Stretch grows and the top narrows strictly monotonically as the lid closes; both are
-// bounded. This is what rules out the reversal near the threshold that an eye below the
-// reference screen's top edge produces (the top dips inward before it stretches).
-var previousHeight = 1.0, previousWidth = 1.0
+// The top narrows strictly monotonically as the lid closes and the image never leaves the
+// screen: the top edge stays at the lid's top edge.
+var previousWidth = 1.0
 for a in stride(from: 89, through: 0, by: -1) {
     let g = EffectModel.geometry(angle: Double(a), threshold: 90)
-    check(g.topHeight >= previousHeight && g.topHeight <= 3 && g.topWidth <= previousWidth && g.topWidth >= 0.08,
-          "geometry is monotonic and bounded at \(a)")
-    if a > 20 { check(g.topHeight > previousHeight && g.topWidth < previousWidth, "geometry is strictly monotonic at \(a)") }
-    previousHeight = g.topHeight; previousWidth = g.topWidth
+    check(g.topHeight == 1 && g.topWidth <= previousWidth && g.topWidth >= 0.08, "taper is monotonic and on screen at \(a)")
+    if a > 20 { check(g.topWidth < previousWidth, "taper is strictly monotonic at \(a)") }
+    previousWidth = g.topWidth
 }
-// Closed form: the stretch is 1 / cos(x - y) regardless of the eye, the top is 1 - tan(x - y) / L wide.
+// Closed form: the top is 1 - tan(x - y) / L wide.
 let l = EffectModel.eyeDistance
-let fortyFive = EffectModel.geometry(angle: 45, threshold: 90)
-check(abs(fortyFive.topWidth - (1 - 1 / l)) < 1e-9 && abs(fortyFive.topHeight - 1 / cos(Double.pi / 4)) < 1e-9,
-      "45° apart matches the closed form")
-let thirty = EffectModel.geometry(angle: 60, threshold: 90)
-check(abs(thirty.topWidth - (1 - tan(Double.pi / 6) / l)) < 1e-9 && abs(thirty.topHeight - 1 / cos(Double.pi / 6)) < 1e-9,
-      "30° apart matches the closed form")
+check(abs(EffectModel.geometry(angle: 45, threshold: 90).topWidth - (1 - 1 / l)) < 1e-9, "45° apart matches the closed form")
+check(abs(EffectModel.geometry(angle: 60, threshold: 90).topWidth - (1 - tan(Double.pi / 6) / l)) < 1e-9, "30° apart matches the closed form")
 var motion = EffectMotion()
 let targetGeometry = EffectModel.geometry(angle: 45, threshold: 90)
 motion.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60)
 check(motion.radius > 0 && motion.radius < 20, "blur interpolates per frame")
-check(motion.geometry.topHeight < targetGeometry.topHeight && motion.geometry.topHeight > 1, "perspective interpolates rather than jumping")
+check(motion.geometry.topWidth > targetGeometry.topWidth && motion.geometry.topWidth < 1, "perspective interpolates rather than jumping")
 check(motion.geometry.darkness > 0 && motion.geometry.darkness < targetGeometry.darkness, "darkness interpolates")
 var at60 = EffectMotion(), at120 = EffectMotion()
 for _ in 0..<6 { at60.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60) }
