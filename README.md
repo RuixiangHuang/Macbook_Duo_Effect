@@ -68,9 +68,11 @@ after lock, sleep or wake.
 
 ## Effect model
 
-The virtual viewpoint sits about 2.5 screen heights in front of the reference
-plane; this is not eye tracking. The projected difference angle is capped at 75°
-for extreme closed postures to avoid geometric flipping. Maximum dimming is 65%,
+The virtual viewpoint sits 4 screen heights in front of the reference plane;
+this is not eye tracking. The projected difference angle is capped at 60°. Both
+constants are `EffectModel.viewerDistance` and `EffectModel.maximumDelta`: a
+nearer viewpoint or a higher cap distorts harder, and the original 2.5 / 75°
+collapsed the image to a sliver well before the lid was closed. Maximum dimming is 65%,
 and gaussian blur strength is adjustable. Capture runs at native Retina
 resolution and 60fps, with Core Image writing straight into a Metal display
 texture. Perspective, dimming and blur are smoothed together over time, and

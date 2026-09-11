@@ -8,15 +8,22 @@ struct EffectGeometry: Equatable {
 }
 
 enum EffectModel {
+    /// How far in front of the reference plane the virtual viewer sits, in screen
+    /// heights. A nearer viewpoint distorts harder: at 2.5 the image collapsed to a
+    /// sliver well before the lid was closed.
+    static let viewerDistance = 4.0
+    /// Ceiling on the projected difference angle. Beyond this the projection runs
+    /// away faster than it reads as perspective.
+    static let maximumDelta = 60.0
+
     /// Projection of a virtual plane fixed at x onto the moving lid. The bottom edge
-    /// is the hinge. A virtual viewer sits 2.5 screen-heights in front of the plane.
-    /// Limit the extreme pose to keep the projection finite near a closed lid.
+    /// is the hinge.
     static func geometry(angle: Double?, threshold: Double) -> EffectGeometry {
         guard let angle, angle.isFinite, (0...360).contains(angle),
               threshold.isFinite, threshold > 0, angle < threshold else { return .identity }
-        let delta = min(75, threshold - angle) * .pi / 180
+        let delta = min(maximumDelta, threshold - angle) * .pi / 180
         let height = 1 / (cos(delta) + 0.2 * sin(delta))
-        let width = max(0.08, 1 - height * sin(delta) / 2.5)
+        let width = max(0.08, 1 - height * sin(delta) / viewerDistance)
         let amount = min(1, max(0, 1 - angle / threshold))
         return EffectGeometry(topHeight: height, topWidth: width,
                               darkness: 0.65 * amount * amount * (3 - 2 * amount))
