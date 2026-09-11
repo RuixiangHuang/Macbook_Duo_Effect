@@ -71,6 +71,12 @@ tccutil reset ScreenCapture local.ruixiang.macbookduo
 
 `./scripts/benchmark.sh` 对 3024×1964 合成画面比较旧位图输出与 Metal 输出。初次本机测量中位数分别约 12.9ms / 4.7ms（不代表端到端帧率）。`./scripts/metal-check.sh` 验证实际纹理上下方向。核心测试同时覆盖按时间插值和达到阈值立即清晰。
 
+## 调试模式
+
+Duo Effect 是菜单栏应用，没有控制台，突然退出时除了系统崩溃报告什么都留不下。在菜单栏菜单里选「开启调试日志」，或用 `--debug` 启动，生命周期事件会写入 `~/Library/Logs/Duo Effect/debug.log`（也可在「控制台」中按 `local.ruixiang.macbookduo` 子系统查看）。「显示调试日志…」会在访达中定位该文件。
+
+日志记录捕获的启停、渲染器的创建与释放、效果开关及当时的角度和阈值、传感器与权限变化、睡眠唤醒挂起，以及错误。逐帧输出被刻意省略，只记录异常帧。文件超过 4 MB 自动轮转。
+
 ## 许可证
 
 [MIT](LICENSE)。应用未启用沙盒：除屏幕录制授权外，它以当前用户身份拥有完整文件访问权限，并直接调用 IOKit HID——读取开合角度需要这样做。

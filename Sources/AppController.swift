@@ -53,6 +53,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var pauseItem: NSMenuItem!
     private var settingsItem: NSMenuItem!
     private var quitItem: NSMenuItem!
+    private var revealItem: NSMenuItem!
     private var angleItem: NSMenuItem!
     private var settings: NSWindow?
     private var suspensionReasons = Set<String>()
@@ -60,8 +61,11 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var previewDeadline: Date?
     private var observers: [NSObjectProtocol] = []
     private var shuttingDown = false
+    private var lastEffectActive = false
+    private var debugItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DebugLog.shared.log("app launched")
         NSApp.setActivationPolicy(.regular)
         buildMenu()
         model.permission = CGPreflightScreenCaptureAccess()
@@ -75,7 +79,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         model.quit = { NSApp.terminate(nil) }
         Localization.shared.onChange = { [weak self] in self?.refreshMenuTitles() }
+        overlay.onFirstFrame = { DebugLog.shared.log("first frame presented") }
         overlay.onError = { [weak self] message in
+            DebugLog.shared.log("error surfaced: \(message.en)")
             self?.model.error = message
             self?.model.radius = 0
         }
@@ -87,6 +93,9 @@ final class AppController: NSObject, NSApplicationDelegate {
             let status = self.sensor.status
             DispatchQueue.main.async {
                 guard !self.shuttingDown else { return }
+                if self.model.sensorStatus.en != status.en {
+                    DebugLog.shared.log("sensor status: \(status.en)")
+                }
                 self.model.angle = angle
                 self.model.sensorStatus = status
                 self.apply()
@@ -97,11 +106,16 @@ final class AppController: NSObject, NSApplicationDelegate {
         permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             guard let self else { return }
             let permission = CGPreflightScreenCaptureAccess()
-            if self.model.permission != permission { self.model.permission = permission; self.apply() }
+            if self.model.permission != permission {
+                DebugLog.shared.log("screen recording permission -> \(permission)")
+                self.model.permission = permission
+                self.apply()
+            }
         }
         let center = NSWorkspace.shared.notificationCenter
         for (name, reason) in [(NSWorkspace.willSleepNotification, "system"), (NSWorkspace.screensDidSleepNotification, "display"), (NSWorkspace.sessionDidResignActiveNotification, "session")] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                DebugLog.shared.log("suspend: \(reason)")
                 self?.suspensionReasons.insert(reason)
                 self?.cancelPreview()
                 self?.overlay.clear()
@@ -110,6 +124,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         for (name, reason) in [(NSWorkspace.didWakeNotification, "system"), (NSWorkspace.screensDidWakeNotification, "display"), (NSWorkspace.sessionDidBecomeActiveNotification, "session")] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                DebugLog.shared.log("resume: \(reason)")
                 self?.suspensionReasons.remove(reason)
                 self?.model.error = nil
                 self?.model.angle = nil
@@ -136,6 +151,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         pauseItem = NSMenuItem(title: "", action: #selector(toggle), keyEquivalent: "p")
         pauseItem.target = self; menu.addItem(pauseItem)
         menu.addItem(.separator())
+        debugItem = NSMenuItem(title: "", action: #selector(toggleDebug), keyEquivalent: "")
+        debugItem.target = self; menu.addItem(debugItem)
+        let reveal = NSMenuItem(title: "", action: #selector(revealLog), keyEquivalent: "")
+        reveal.target = self; menu.addItem(reveal)
+        revealItem = reveal
+        menu.addItem(.separator())
         quitItem = NSMenuItem(title: "", action: #selector(terminate), keyEquivalent: "q")
         quitItem.target = self; menu.addItem(quitItem)
         statusItem.menu = menu
@@ -151,6 +172,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         settingsItem.title = t("Duo Effect Settings…", "Duo Effect 设置…")
         pauseItem.title = model.enabled ? t("Pause Effect", "暂停效果") : t("Enable Effect", "启用效果")
         quitItem.title = t("Quit Duo Effect", "退出 Duo Effect")
+        debugItem.title = DebugLog.shared.isEnabled ? t("Stop Debug Logging", "停止调试日志")
+                                                    : t("Start Debug Logging", "开启调试日志")
+        revealItem.title = t("Show Debug Log…", "显示调试日志…")
+        revealItem.isHidden = !DebugLog.shared.isEnabled
+    }
+
+    @objc private func toggleDebug() {
+        DebugLog.shared.setEnabled(!DebugLog.shared.isEnabled)
+        refreshMenuTitles()
+    }
+
+    @objc private func revealLog() {
+        NSWorkspace.shared.activateFileViewerSelecting([DebugLog.shared.fileURL])
     }
     @objc private func toggle() { model.enabled.toggle() }
     @objc private func terminate() { NSApp.terminate(nil) }
@@ -164,6 +198,10 @@ final class AppController: NSObject, NSApplicationDelegate {
                                          enabled: model.enabled && model.permission && !sleeping && model.error == nil)
         // The renderer interpolates all visual properties on its 60 Hz frame clock.
         model.radius = desired
+        if (desired > 0) != lastEffectActive {
+            lastEffectActive = desired > 0
+            DebugLog.shared.log("effect \(lastEffectActive ? "on" : "off") angle=\(angle.map { String(format: "%.1f", $0) } ?? "nil") threshold=\(Int(model.threshold)) permission=\(model.permission) sleeping=\(sleeping)")
+        }
         overlay.update(radius: model.radius, geometry: EffectModel.geometry(angle: angle, threshold: model.threshold))
         refreshMenuTitles()
     }
@@ -217,6 +255,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        DebugLog.shared.log("app terminating normally")
         shuttingDown = true
         permissionTimer?.invalidate()
         sensorTimer?.cancel()

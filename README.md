@@ -117,6 +117,19 @@ launched it, which is not evidence that the GUI app is granted.
 The code is an independent implementation based on that interface information;
 no external code or packages are vendored.
 
+## Debug mode
+
+Duo Effect is a menu bar app with no console, so a sudden exit otherwise leaves
+nothing behind but a system crash report. Turn on **Start Debug Logging** in the
+status item menu, or launch with `--debug`, and lifecycle events are written to
+`~/Library/Logs/Duo Effect/debug.log` (also visible in Console.app under the
+`local.ruixiang.macbookduo` subsystem). **Show Debug Log…** reveals the file.
+
+The log records capture start and stop, renderer creation and release, effect
+on/off transitions with the angle and threshold, sensor and permission changes,
+sleep/wake suspensions, and errors. Per-frame output is deliberately omitted;
+only anomalous frames are logged. The file rotates past 4 MB.
+
 ## License
 
 [MIT](LICENSE). The app is not sandboxed: beyond the Screen Recording grant it

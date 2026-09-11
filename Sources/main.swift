@@ -17,6 +17,10 @@ if CommandLine.arguments.contains("--self-check") {
     print("Threshold boundary clears: \(EffectModel.radius(angle: 90, threshold: 90, maximum: 32, enabled: true) == 0)")
     exit(0)
 }
+if CommandLine.arguments.contains("--debug-log-path") {
+    print(DebugLog.shared.fileURL.path)
+    exit(0)
+}
 let app = NSApplication.shared
 let delegate = AppController()
 app.delegate = delegate

@@ -33,7 +33,10 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
         self.fail = fail
         super.init()
         view.delegate = self
+        DebugLog.shared.log("renderer created drawable=\(Int(view.drawableSize.width))x\(Int(view.drawableSize.height))")
     }
+
+    deinit { DebugLog.shared.log("renderer released") }
 
     func setEffect(radius value: Double, geometry: EffectGeometry) {
         lock.lock()
@@ -46,6 +49,7 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
         view?.draw()
     }
     func stop() {
+        DebugLog.shared.log("renderer stop requested")
         lock.lock()
         stopped = true
         latest = nil
@@ -96,11 +100,20 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
             let scaled = EffectProcessor.metalImage(output, bounds: bounds)
             context.render(scaled, to: drawable.texture, commandBuffer: command, bounds: bounds, colorSpace: colorSpace)
             command.present(drawable)
-            command.addCompletedHandler { [weak self, buffer] finished in
+            command.addCompletedHandler { [weak self, buffer, budget = framesInFlight] finished in
                 // Retain the CVPixelBuffer until the GPU has finished consuming it.
                 _ = buffer
+                // The semaphore is captured strongly, not reached through self.
+                // clear() can release the renderer while a frame is still on the
+                // GPU; releasing the semaphore with a count outstanding makes
+                // libdispatch trap the whole process.
+                budget.signal()
+                // Only anomalies: a per-frame line at 60fps buries the lifecycle
+                // events this log exists for.
+                if finished.status != .completed {
+                    DebugLog.shared.log("frame ended status=\(finished.status.rawValue) error=\(finished.error?.localizedDescription ?? "none")")
+                }
                 guard let self else { return }
-                self.framesInFlight.signal()
                 self.lock.lock()
                 let shouldDeliver = !self.stopped && !self.presented && finished.status == .completed
                 if shouldDeliver { self.presented = true }
@@ -127,6 +140,7 @@ final class BlurOverlay: NSObject {
     private var backingScale = 1.0
     private var watchdog: Timer?
     var onError: ((LocalizedText) -> Void)?
+    var onFirstFrame: (() -> Void)?
     var isVisible: Bool { window?.isVisible == true && (window?.alphaValue ?? 0) > 0 }
 
     static var builtInScreen: NSScreen? {
@@ -200,6 +214,7 @@ final class BlurOverlay: NSObject {
                 let receiver = FrameRenderer(view: metalView, device: device, commands: commands, deliver: { [weak self] in
                     guard let self, ticket == self.generation, self.radius > 0 else { return }
                     self.window?.alphaValue = 1
+                    self.onFirstFrame?()
                 }, fail: { [weak self] error in
                     guard let self, ticket == self.generation else { return }
                     self.clear()
@@ -227,7 +242,9 @@ final class BlurOverlay: NSObject {
             } catch {
                 guard ticket == self.generation else { return }
                 self.clear()
-                self.onError?((error as? OverlayFailure)?.text ?? LocalizedText.system(error))
+                let failure = (error as? OverlayFailure)?.text ?? LocalizedText.system(error)
+                DebugLog.shared.log("capture start failed: \(failure.en)")
+                self.onError?(failure)
             }
         }
     }
@@ -242,6 +259,9 @@ final class BlurOverlay: NSObject {
     }
 
     func clear() {
+        if window != nil || renderer != nil || stream != nil {
+            DebugLog.shared.log("overlay clear window=\(window != nil) renderer=\(renderer != nil) stream=\(stream != nil)")
+        }
         radius = 0
         generation += 1
         starting = false
