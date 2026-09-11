@@ -26,7 +26,7 @@ check(LidReport.angle([2, 90, 0]) == nil, "wrong report ID rejected")
 let clearGeometry = EffectModel.geometry(angle: 90, threshold: 90)
 check(clearGeometry.topHeight == 1 && clearGeometry.topWidth == 1 && clearGeometry.darkness == 0, "reference plane is identity")
 let foldedGeometry = EffectModel.geometry(angle: 45, threshold: 90)
-check(foldedGeometry.topHeight < 1 && foldedGeometry.topWidth < 1, "closing foreshortens toward the hinge and narrows slightly")
+check(foldedGeometry.topHeight > 1 && foldedGeometry.topWidth == 1, "closing stretches past the top edge without narrowing")
 check(foldedGeometry.darkness > 0 && foldedGeometry.darkness < 1, "closing dims image")
 check(EffectModel.geometry(angle: nil, threshold: 90) == .identity, "missing angle resets projection")
 for x in stride(from: 10.0, through: 140, by: 1) {
@@ -44,21 +44,21 @@ let full = EffectModel.geometry(angle: 45, threshold: 90, strength: 1)
 let flat = EffectModel.geometry(angle: 45, threshold: 90, strength: 0)
 let half = EffectModel.geometry(angle: 45, threshold: 90, strength: 0.5)
 check(flat.topHeight == 1 && flat.topWidth == 1 && flat.darkness == full.darkness, "zero strength is flat but still dims")
-check(half.topWidth > full.topWidth && half.topWidth < 1 && half.topHeight < 1 && half.topHeight > full.topHeight, "half strength sits between")
+check(half.topWidth == 1 && half.topHeight > 1 && half.topHeight < full.topHeight, "half strength sits between")
 check(EffectModel.geometry(angle: 45, threshold: 90, strength: 7) == full, "strength clamps to 1")
 // The eye turns with the lid, so only the angle between the planes matters.
 let sameDelta = EffectModel.geometry(angle: 90, threshold: 120)
 check(sameDelta.topHeight == EffectModel.geometry(angle: 60, threshold: 90).topHeight, "geometry depends on the difference angle only")
-// Foreshortening deepens monotonically as the lid closes; the top edge never crosses the hinge.
+// The stretch grows monotonically as the lid closes and is capped.
 var previous = 1.0
 for a in stride(from: 89, through: 0, by: -1) {
     let g = EffectModel.geometry(angle: Double(a), threshold: 90)
-    check(g.topHeight <= previous && g.topHeight >= 0.05, "foreshortening is monotonic and bounded at \(a)")
+    check(g.topHeight >= previous && g.topHeight <= 3 && g.topWidth == 1, "stretch is monotonic, capped and never narrows at \(a)")
     previous = g.topHeight
 }
-// Parallel-projection sanity: at 60° apart the content's top lands near cos 60° = 0.5.
+// Parallel projection along the reference plane's normal: 60° apart stretches by 1 / cos 60° = 2.
 let sixty = EffectModel.geometry(angle: 30, threshold: 90)
-check(abs(sixty.topHeight - 0.5) < 0.02 && sixty.topWidth > 0.7, "60° apart foreshortens to about half height with mild narrowing")
+check(abs(sixty.topHeight - 2) < 1e-9 && sixty.topWidth == 1, "60° apart stretches to twice the height")
 var motion = EffectMotion()
 let targetGeometry = EffectModel.geometry(angle: 45, threshold: 90)
 motion.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60)
