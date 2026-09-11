@@ -40,9 +40,10 @@ The bottom hinge and picture height stay fixed. Closing progressively narrows th
 - `./scripts/render-check.sh` writes `docs/effect-preview.png`, validating the
   image pipeline on synthetic frames without reading screen content.
 - `./scripts/settings-render.sh` renders the settings window offscreen in both
-  languages to `docs/settings-en.png` and `docs/settings-zh.png`. ImageRenderer
-  cannot rasterize AppKit controls, so the language menu, the toggle and the
-  sliders appear as placeholder bars.
+  languages to `.build/settings-en.png` and `.build/settings-zh.png` as a
+  layout and translation check; no screen capture or permission is involved.
+  Controls come out untinted because only a key window in an active app gets
+  the accent colour, so `docs/settings-*.png` are real screenshots of the app.
 - `./scripts/make-icon.sh` regenerates `Resources/AppIcon.icns` from
   `Resources/AppIcon.png`; replace that 1024×1024 image to change the icon.
 

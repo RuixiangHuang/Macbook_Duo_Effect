@@ -26,7 +26,7 @@
 保留梯形透视：底边和高度固定，合盖时顶边按原收窄曲线逐渐向内收，不再纵向先缩小再放大。透视强度可调；同时按合盖进度逐渐淡至黑色、增加虚化，达到阈值立即恢复清晰。模糊半径还沿高度渐变：转轴端约为最大半径的 5%，摄像头端为最大半径；使用 CIMaskedVariableBlur 连续变化。保留 60 帧 Metal 渲染。
 
 - `./scripts/render-check.sh` 生成 `docs/effect-preview.png`，用合成画面验证图像处理链，不读取屏幕内容。
-- `./scripts/settings-render.sh` 离屏渲染设置窗口的英文和中文版本到 `docs/settings-en.png` 和 `docs/settings-zh.png`，验证文案和排版。ImageRenderer 无法栅格化 AppKit 控件，语言菜单、开关和滑块在输出里是占位色块。
+- `./scripts/settings-render.sh` 离屏渲染设置窗口的英文和中文版本到 `.build/settings-en.png` 和 `.build/settings-zh.png`，作为文案和排版检查；不涉及屏幕捕获和权限。控件没有强调色，因为只有活动应用的 key 窗口才会画出强调色，所以 `docs/settings-*.png` 是应用的真实截图。
 - `./scripts/make-icon.sh` 从 `Resources/AppIcon.png` 重新生成 `Resources/AppIcon.icns`；换图标时替换那张 1024×1024 图再跑它。
 
 ## 流畅度检查
