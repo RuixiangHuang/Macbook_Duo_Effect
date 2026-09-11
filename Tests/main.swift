@@ -49,23 +49,25 @@ check(EffectModel.geometry(angle: 45, threshold: 90, strength: 7) == full, "stre
 // The eye turns with the lid, so only the angle between the planes matters.
 let sameDelta = EffectModel.geometry(angle: 90, threshold: 120)
 check(sameDelta.topHeight == EffectModel.geometry(angle: 60, threshold: 90).topHeight, "geometry depends on the difference angle only")
-// Stretch grows and the top narrows monotonically as the lid closes; both are bounded.
-// (At a few degrees the top lands a hair inside the lid, so start below 1.)
-var previousHeight = 0.0, previousWidth = 1.0
+// Stretch grows and the top narrows strictly monotonically as the lid closes; both are
+// bounded. This is what rules out the reversal near the threshold that an eye below the
+// reference screen's top edge produces (the top dips inward before it stretches).
+var previousHeight = 1.0, previousWidth = 1.0
 for a in stride(from: 89, through: 0, by: -1) {
     let g = EffectModel.geometry(angle: Double(a), threshold: 90)
     check(g.topHeight >= previousHeight && g.topHeight <= 3 && g.topWidth <= previousWidth && g.topWidth >= 0.08,
           "geometry is monotonic and bounded at \(a)")
+    if a > 20 { check(g.topHeight > previousHeight && g.topWidth < previousWidth, "geometry is strictly monotonic at \(a)") }
     previousHeight = g.topHeight; previousWidth = g.topWidth
 }
-// Closed form at 45° apart, where tan = 1: t = (L - 0.5) / (L + 0.5), top at 0.5 (1 + t) / cos 45°.
+// Closed form: the stretch is 1 / cos(x - y) regardless of the eye, the top is 1 - tan(x - y) / L wide.
 let l = EffectModel.eyeDistance
-let expectedWidth = (l - 0.5) / (l + 0.5)
 let fortyFive = EffectModel.geometry(angle: 45, threshold: 90)
-check(abs(fortyFive.topWidth - expectedWidth) < 1e-9 && abs(fortyFive.topHeight - 0.5 * (1 + expectedWidth) / cos(Double.pi / 4)) < 1e-9,
+check(abs(fortyFive.topWidth - (1 - 1 / l)) < 1e-9 && abs(fortyFive.topHeight - 1 / cos(Double.pi / 4)) < 1e-9,
       "45° apart matches the closed form")
-// The original tuning was an eye 2.5 screen heights away: at 60° lid that gave 1.035 / 79%.
-check(abs(EffectModel.geometry(angle: 60, threshold: 90).topWidth - ((l - 0.5 * tan(Double.pi / 6)) / (l + 0.5 * tan(Double.pi / 6)))) < 1e-9, "30° apart matches the closed form")
+let thirty = EffectModel.geometry(angle: 60, threshold: 90)
+check(abs(thirty.topWidth - (1 - tan(Double.pi / 6) / l)) < 1e-9 && abs(thirty.topHeight - 1 / cos(Double.pi / 6)) < 1e-9,
+      "30° apart matches the closed form")
 var motion = EffectMotion()
 let targetGeometry = EffectModel.geometry(angle: 45, threshold: 90)
 motion.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60)
