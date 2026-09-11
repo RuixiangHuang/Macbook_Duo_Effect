@@ -17,7 +17,7 @@ final class AppModel: ObservableObject {
     @Published var maximum = 32.0 {
         didSet { UserDefaults.standard.set(maximum, forKey: "maximum"); onChange?() }
     }
-    @Published var perspective = 0.5 {
+    @Published var perspective = 1.0 {
         didSet { UserDefaults.standard.set(perspective, forKey: "perspective"); onChange?() }
     }
     var onChange: (() -> Void)?
@@ -27,14 +27,14 @@ final class AppModel: ObservableObject {
     var quit: (() -> Void)?
     init() {
         let defaults = UserDefaults.standard
-        defaults.register(defaults: ["enabled": true, "threshold": 90.0, "maximum": 32.0, "perspective": 0.5])
+        defaults.register(defaults: ["enabled": true, "threshold": 90.0, "maximum": 32.0, "perspective": 1.0])
         enabled = defaults.bool(forKey: "enabled")
         let x = defaults.double(forKey: "threshold")
         threshold = x.isFinite ? min(140, max(10, x)) : 90
         let blur = defaults.double(forKey: "maximum")
         maximum = blur.isFinite ? min(60, max(1, blur)) : 32
         let depth = defaults.double(forKey: "perspective")
-        perspective = depth.isFinite ? min(1, max(0, depth)) : 0.5
+        perspective = depth.isFinite ? min(1, max(0, depth)) : 1
     }
     var stateText: String {
         if !enabled { return t("Effect paused", "效果已暂停") }
