@@ -37,16 +37,19 @@ after lock, sleep or wake.
 
 Below the clear threshold the screen is treated as fixed at the threshold
 angle while the lid really moves, and the viewer looks straight at that
-reference screen: the line of sight is perpendicular to the reference plane
-and does not move with the lid. The rays are parallel, so nothing shifts
-sideways. Seen along that line the lid, tilted by x − y, is foreshortened to
-cos(x − y) of its height, so the content is stretched by 1 / cos(x − y) along
-the lid from the shared hinge and whatever lands past the lid's top edge is
-not shown — at 60° apart only the bottom half of the image remains. Only the
-angle between the two planes matters, and the stretch is capped at 3×. The
-**Perspective** slider scales how much of this geometry is applied, from a
-flat image at 0% to the full projection at 100%. Maximum dimming is 65%, and
-gaussian
+reference screen with the eye level with its top edge, 5 screen heights away
+(`EffectModel.eyeDistance`). The lid leans toward the eye by x − y, so its
+top edge is seen closer and larger than the reference screen's, and the
+content's top is drawn narrower by tan(x − y) / eyeDistance to compensate:
+88% wide at 30° apart, 65% at 60°. Relative to the lid the content tilts
+away by x − y, so its top is also lowered by the foreshortening cos(x − y),
+scaled by `EffectModel.verticalShrink`: 92% high at 30° apart, 70% at 60°,
+with the strip above it empty. The full projection would instead stretch the
+content past the lid's top edge; that part is deliberately left out so the
+image always stays on the screen. Only the angle between the two planes
+matters. The **Perspective** slider scales how much of the geometry is
+applied, from a flat image at 0% to the full taper and shrink at 100%.
+Maximum dimming is 65%, and gaussian
 blur strength is adjustable. Capture runs at native Retina resolution and 60fps,
 with Core Image writing straight into a Metal display texture. Perspective,
 dimming and blur are smoothed together over time, and capture only runs while
