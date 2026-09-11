@@ -116,3 +116,9 @@ launched it, which is not evidence that the GUI app is granted.
 
 The code is an independent implementation based on that interface information;
 no external code or packages are vendored.
+
+## License
+
+[MIT](LICENSE). The app is not sandboxed: beyond the Screen Recording grant it
+runs with your user's full file access and talks to IOKit HID directly, which is
+what reading the lid angle requires.

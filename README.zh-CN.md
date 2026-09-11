@@ -70,3 +70,7 @@ tccutil reset ScreenCapture local.ruixiang.macbookduo
 ## 流畅度检查
 
 `./scripts/benchmark.sh` 对 3024×1964 合成画面比较旧位图输出与 Metal 输出。初次本机测量中位数分别约 12.9ms / 4.7ms（不代表端到端帧率）。`./scripts/metal-check.sh` 验证实际纹理上下方向。核心测试同时覆盖按时间插值和达到阈值立即清晰。
+
+## 许可证
+
+[MIT](LICENSE)。应用未启用沙盒：除屏幕录制授权外，它以当前用户身份拥有完整文件访问权限，并直接调用 IOKit HID——读取开合角度需要这样做。
