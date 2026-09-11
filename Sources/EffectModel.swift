@@ -16,7 +16,7 @@ enum EffectModel {
     /// How much of the foreshortening is applied vertically: a plane tilted away
     /// by x - y appears cos(x - y) as tall, and at 1 the content's top lands
     /// exactly there, leaving the strip above it empty. 0 keeps the full height.
-    static let verticalShrink = 0.3
+    static let verticalShrink = 0.6
 
     /// The screen is treated as fixed at the reference angle x while the lid is
     /// really at y, so relative to the lid the content tilts away by x - y. Its
