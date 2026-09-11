@@ -64,16 +64,6 @@ For tests, benchmarks, debug logging and the details of the effect model, see [d
 - The lid angle protocol is not documented by Apple, so a future macOS release could break it.
 - This is a visual effect, not a privacy screen or a security boundary.
 
-## Troubleshooting
-
-**The effect never starts after granting permission.** An older build may have left a stale permission record. Quit the app, reset only this app's record, then reopen and grant once more:
-
-```sh
-tccutil reset ScreenCapture local.ruixiang.macbookduo
-```
-
-**Something else went wrong.** Turn on **Start Debug Logging** in the menu bar and check `~/Library/Logs/Duo Effect/debug.log`.
-
 ## Acknowledgements
 
 - [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor) for the lid angle sensor protocol information.

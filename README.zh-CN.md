@@ -62,16 +62,6 @@ Duo Effect 读取 MacBook 的真实开合角度，在你合上盖子的过程中
 - 开合角度协议未经 Apple 公开文档化，未来的 macOS 版本可能导致失效。
 - 这是视觉效果，不是隐私屏，也不是安全屏障。
 
-## 常见问题
-
-**授权后效果一直不出现。** 旧版本可能留下了不匹配的授权记录。退出应用，只重置本应用的记录，再重新打开并授权一次：
-
-```sh
-tccutil reset ScreenCapture local.ruixiang.macbookduo
-```
-
-**出了别的问题。** 在菜单栏开启「开启调试日志」，查看 `~/Library/Logs/Duo Effect/debug.log`。
-
 ## 致谢
 
 - [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor)：开合角度传感器协议信息。
