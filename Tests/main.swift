@@ -63,7 +63,7 @@ var motion = EffectMotion()
 let targetGeometry = EffectModel.geometry(angle: 45, threshold: 90)
 motion.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60)
 check(motion.radius > 0 && motion.radius < 20, "blur interpolates per frame")
-check(motion.geometry.topWidth > targetGeometry.topWidth && motion.geometry.topWidth < 1, "perspective interpolates rather than jumping")
+check(motion.geometry.topHeight < targetGeometry.topHeight && motion.geometry.topHeight > 1, "perspective interpolates rather than jumping")
 check(motion.geometry.darkness > 0 && motion.geometry.darkness < targetGeometry.darkness, "darkness interpolates")
 var at60 = EffectMotion(), at120 = EffectMotion()
 for _ in 0..<6 { at60.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60) }
