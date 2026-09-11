@@ -17,6 +17,9 @@ final class AppModel: ObservableObject {
     @Published var maximum = 32.0 {
         didSet { UserDefaults.standard.set(maximum, forKey: "maximum"); onChange?() }
     }
+    @Published var perspective = 0.5 {
+        didSet { UserDefaults.standard.set(perspective, forKey: "perspective"); onChange?() }
+    }
     var onChange: (() -> Void)?
     var requestPermission: (() -> Void)?
     var preview: (() -> Void)?
@@ -24,12 +27,14 @@ final class AppModel: ObservableObject {
     var quit: (() -> Void)?
     init() {
         let defaults = UserDefaults.standard
-        defaults.register(defaults: ["enabled": true, "threshold": 90.0, "maximum": 32.0])
+        defaults.register(defaults: ["enabled": true, "threshold": 90.0, "maximum": 32.0, "perspective": 0.5])
         enabled = defaults.bool(forKey: "enabled")
         let x = defaults.double(forKey: "threshold")
         threshold = x.isFinite ? min(140, max(10, x)) : 90
         let blur = defaults.double(forKey: "maximum")
         maximum = blur.isFinite ? min(60, max(1, blur)) : 32
+        let depth = defaults.double(forKey: "perspective")
+        perspective = depth.isFinite ? min(1, max(0, depth)) : 0.5
     }
     var stateText: String {
         if !enabled { return t("Effect paused", "效果已暂停") }
@@ -202,7 +207,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             lastEffectActive = desired > 0
             DebugLog.shared.log("effect \(lastEffectActive ? "on" : "off") angle=\(angle.map { String(format: "%.1f", $0) } ?? "nil") threshold=\(Int(model.threshold)) permission=\(model.permission) sleeping=\(sleeping)")
         }
-        overlay.update(radius: model.radius, geometry: EffectModel.geometry(angle: angle, threshold: model.threshold))
+        overlay.update(radius: model.radius, geometry: EffectModel.geometry(angle: angle, threshold: model.threshold, strength: model.perspective))
         refreshMenuTitles()
     }
 
@@ -344,6 +349,16 @@ struct SettingsView: View {
                 }
                 Slider(value: $model.maximum, in: 1...60, step: 1).tint(accent)
                     .accessibilityLabel(t("Maximum blur strength", "最大模糊强度"))
+                HStack {
+                    Label(t("Perspective", "透视强度"), systemImage: "perspective")
+                    Spacer()
+                    Text("\(Int((model.perspective * 100).rounded()))%").monospacedDigit().foregroundStyle(accent)
+                }
+                Slider(value: $model.perspective, in: 0...1, step: 0.05).tint(accent)
+                    .accessibilityLabel(t("Perspective strength", "透视强度"))
+                Text(t("0% keeps the image flat and only dims and blurs; 100% fully compensates for the lid angle.",
+                       "0% 画面不变形、只暗化和模糊；100% 完整补偿盖子角度。"))
+                    .font(.caption).foregroundStyle(.secondary)
             }.padding(.vertical, 2)
 
             if !model.permission {

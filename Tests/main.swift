@@ -39,6 +39,13 @@ for x in stride(from: 10.0, through: 140, by: 1) {
         }
     }
 }
+// Strength blends between a flat image and the full projection; dimming is unaffected.
+let full = EffectModel.geometry(angle: 45, threshold: 90, strength: 1)
+let flat = EffectModel.geometry(angle: 45, threshold: 90, strength: 0)
+let half = EffectModel.geometry(angle: 45, threshold: 90, strength: 0.5)
+check(flat.topHeight == 1 && flat.topWidth == 1 && flat.darkness == full.darkness, "zero strength is flat but still dims")
+check(half.topWidth > full.topWidth && half.topWidth < 1 && half.topHeight > 1 && half.topHeight < full.topHeight, "half strength sits between")
+check(EffectModel.geometry(angle: 45, threshold: 90, strength: 7) == full, "strength clamps to 1")
 // The exact projection follows the reference angle, not just the difference:
 // above 90° the reference plane leans away, so its content shrinks onto the lid.
 let leaning = EffectModel.geometry(angle: 90, threshold: 120)

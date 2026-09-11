@@ -30,11 +30,16 @@ enum EffectModel {
     /// edge stays put and only the top edge moves: `topHeight` is where the
     /// content's top lands along the lid (>1 is past its edge and cropped) and
     /// `topWidth` is the width scale there.
-    static func geometry(angle: Double?, threshold: Double) -> EffectGeometry {
+    /// `strength` scales how much of the projection is applied: 0 leaves the
+    /// image flat (only dimming and blur), 1 is the full geometric compensation.
+    /// The full projection is faithful to the model but reads as harsh on a real
+    /// lid, whose physical tilt the eye already sees.
+    static func geometry(angle: Double?, threshold: Double, strength: Double = 1) -> EffectGeometry {
         guard let angle, angle.isFinite, (0...360).contains(angle),
               threshold.isFinite, threshold > 0, angle < threshold else { return .identity }
         let amount = min(1, max(0, 1 - angle / threshold))
         let darkness = 0.65 * amount * amount * (3 - 2 * amount)
+        let k = strength.isFinite ? min(1, max(0, strength)) : 1
         let x = threshold * .pi / 180
         let y = max(angle, threshold - maximumDelta, minimumLid) * .pi / 180
         // Side view: z toward the eye, y up. The content's top edge on plane x, the
@@ -50,7 +55,8 @@ enum EffectModel {
         let (qz, qy) = (ez + t * (pz - ez), ey + t * (py - ey))
         let along = qz * cos(y) + qy * sin(y)
         // t is also the lateral scale: the top edge projects toward the eye's centre line.
-        return EffectGeometry(topHeight: min(3, along), topWidth: max(0.08, t), darkness: darkness)
+        let height = min(3, along), width = max(0.08, t)
+        return EffectGeometry(topHeight: 1 + k * (height - 1), topWidth: 1 - k * (1 - width), darkness: darkness)
     }
 
     static func radius(angle: Double?, threshold: Double, maximum: Double, enabled: Bool) -> Double {
