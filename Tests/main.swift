@@ -44,13 +44,16 @@ check(flat.topWidth == 1 && flat.topHeight == 1, "zero perspective remains flat"
 var motion = EffectMotion()
 let targetGeometry = EffectModel.geometry(angle: 45, threshold: 90)
 motion.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60)
-check(motion.radius > 0 && motion.radius < 20, "blur interpolates per frame")
+check(motion.radius == 20, "blur follows the sensor target immediately")
 check(motion.geometry.topWidth < 1 && motion.geometry.topWidth > targetGeometry.topWidth && motion.geometry.topHeight == 1, "trapezoid interpolates without vertical resizing")
 check(motion.geometry.darkness > 0 && motion.geometry.darkness < targetGeometry.darkness, "darkness interpolates")
 var at60 = EffectMotion(), at120 = EffectMotion()
 for _ in 0..<6 { at60.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 60) }
 for _ in 0..<12 { at120.advance(radius: 20, geometry: targetGeometry, deltaTime: 1.0 / 120) }
-check(abs(at60.radius - at120.radius) < 0.000001, "motion independent of frame rate")
+check(at60.radius == 20 && at120.radius == 20, "immediate blur is independent of frame rate")
+check(abs(at60.geometry.topWidth - at120.geometry.topWidth) < 0.000001 &&
+      abs(at60.geometry.darkness - at120.geometry.darkness) < 0.000001,
+      "geometry smoothing is independent of frame rate")
 motion.advance(radius: 0, geometry: .identity, deltaTime: 1.0 / 60)
 check(motion.radius == 0 && motion.geometry == .identity, "clear boundary never has smoothing lag")
 if failures > 0 { exit(1) }

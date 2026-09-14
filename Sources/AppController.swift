@@ -91,18 +91,22 @@ final class AppController: NSObject, NSApplicationDelegate {
             self?.model.radius = 0
         }
         let timer = DispatchSource.makeTimerSource(queue: sensorQueue)
-        timer.schedule(deadline: .now(), repeating: 1.0 / 30.0)
+        timer.schedule(deadline: .now(), repeating: 1.0 / 60.0)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             let angle = self.sensor.read()
             let status = self.sensor.status
             DispatchQueue.main.async {
                 guard !self.shuttingDown else { return }
-                if self.model.sensorStatus.en != status.en {
+                self.overlay.noteSensorRead()
+                let angleChanged = self.model.angle != angle
+                let statusChanged = self.model.sensorStatus.en != status.en || self.model.sensorStatus.zh != status.zh
+                guard angleChanged || statusChanged else { return }
+                if statusChanged {
                     DebugLog.shared.log("sensor status: \(status.en)")
+                    self.model.sensorStatus = status
                 }
-                self.model.angle = angle
-                self.model.sensorStatus = status
+                if angleChanged { self.model.angle = angle }
                 self.apply()
             }
         }
@@ -201,13 +205,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         let angle = model.previewing ? model.threshold * 0.25 : model.angle
         let desired = EffectModel.radius(angle: angle, threshold: model.threshold, maximum: model.maximum,
                                          enabled: model.enabled && model.permission && !sleeping && model.error == nil)
-        // The renderer interpolates all visual properties on its 60 Hz frame clock.
-        model.radius = desired
+        if model.radius != desired { model.radius = desired }
         if (desired > 0) != lastEffectActive {
             lastEffectActive = desired > 0
             DebugLog.shared.log("effect \(lastEffectActive ? "on" : "off") angle=\(angle.map { String(format: "%.1f", $0) } ?? "nil") threshold=\(Int(model.threshold)) permission=\(model.permission) sleeping=\(sleeping)")
         }
-        overlay.update(radius: model.radius, geometry: EffectModel.geometry(angle: angle, threshold: model.threshold, strength: model.perspective))
+        let canCapture = model.enabled && model.permission && !sleeping && model.error == nil
+        let prewarmLimit = min(360, model.threshold + 12)
+        let keepWarm = canCapture && angle.map {
+            $0.isFinite && (0...360).contains($0) && $0 < prewarmLimit
+        } == true
+        overlay.update(radius: model.radius,
+                       geometry: EffectModel.geometry(angle: angle, threshold: model.threshold, strength: model.perspective),
+                       keepWarm: keepWarm)
         refreshMenuTitles()
     }
 

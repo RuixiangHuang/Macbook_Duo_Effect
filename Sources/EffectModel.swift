@@ -40,15 +40,16 @@ enum LidReport {
     }
 }
 
-/// Time-based smoothing shared by blur, projection and dimming. Clearing is immediate.
+/// Blur follows the sensor immediately. A short time-based filter keeps projection
+/// and dimming from exposing the sensor's integer-degree steps. Clearing is immediate.
 struct EffectMotion {
     private(set) var radius = 0.0
     private(set) var geometry = EffectGeometry.identity
 
     mutating func advance(radius target: Double, geometry targetGeometry: EffectGeometry, deltaTime: Double) {
         guard target > 0 else { radius = 0; geometry = .identity; return }
-        let blend = 1 - exp(-max(0, deltaTime) / 0.045)
-        radius += (target - radius) * blend
+        radius = target
+        let blend = 1 - exp(-max(0, deltaTime) / 0.015)
         geometry = EffectGeometry(
             topHeight: geometry.topHeight + (targetGeometry.topHeight - geometry.topHeight) * blend,
             topWidth: geometry.topWidth + (targetGeometry.topWidth - geometry.topWidth) * blend,

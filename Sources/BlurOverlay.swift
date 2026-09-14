@@ -17,6 +17,7 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
     private var geometry = EffectGeometry.identity
     private var stopped = false
     private var presented = false
+    private var presentationGeneration: UInt64 = 0
     private var motion = EffectMotion()
     private var lastFrameTime = 0.0
     private weak var view: MTKView?
@@ -40,13 +41,24 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
 
     func setEffect(radius value: Double, geometry: EffectGeometry) {
         lock.lock()
+        let wasActive = radius > 0
+        let isActive = value > 0
+        if wasActive != isActive {
+            presentationGeneration &+= 1
+            presented = false
+        }
         self.radius = value
         self.geometry = geometry
         lock.unlock()
+        view?.isPaused = !isActive
+        if isActive && !wasActive { view?.draw() }
     }
     func start() {
-        view?.isPaused = false
-        view?.draw()
+        lock.lock()
+        let isActive = radius > 0 && !stopped
+        lock.unlock()
+        view?.isPaused = !isActive
+        if isActive { view?.draw() }
     }
     func stop() {
         DebugLog.shared.log("renderer stop requested")
@@ -76,6 +88,11 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         DispatchQueue.main.async { self.fail(LocalizedText.system(error)) }
     }
+    var hasFrame: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return latest != nil
+    }
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
     func draw(in view: MTKView) {
         lock.lock()
@@ -83,6 +100,7 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
         let targetRadius = radius
         let targetGeometry = geometry
         let active = !stopped
+        let generation = presentationGeneration
         lock.unlock()
         guard active, targetRadius > 0, let buffer,
               framesInFlight.wait(timeout: .now()) == .success else { return }
@@ -115,11 +133,21 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
                 }
                 guard let self else { return }
                 self.lock.lock()
-                let shouldDeliver = !self.stopped && !self.presented && finished.status == .completed
+                let shouldDeliver = !self.stopped && self.radius > 0 &&
+                    generation == self.presentationGeneration && !self.presented && finished.status == .completed
                 if shouldDeliver { self.presented = true }
                 let shouldFail = !self.stopped && finished.status == .error
                 self.lock.unlock()
-                if shouldDeliver { DispatchQueue.main.async { self.deliver() } }
+                if shouldDeliver {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.lock.lock()
+                        let stillCurrent = !self.stopped && self.radius > 0 &&
+                            generation == self.presentationGeneration && self.presented
+                        self.lock.unlock()
+                        if stillCurrent { self.deliver() }
+                    }
+                }
                 if shouldFail { DispatchQueue.main.async { self.fail(LocalizedText(en: "GPU rendering failed; please retry", zh: "GPU 渲染失败，请重试")) } }
             }
             command.commit()
@@ -136,6 +164,7 @@ final class BlurOverlay: NSObject {
     private var generation = 0
     private var radius = 0.0
     private var geometry = EffectGeometry.identity
+    private var keepWarm = false
     private var lastUpdate = Date.distantPast
     private var backingScale = 1.0
     private var watchdog: Timer?
@@ -150,12 +179,20 @@ final class BlurOverlay: NSObject {
         }
     }
 
-    func update(radius value: Double, geometry: EffectGeometry = .identity) {
+    private var shouldCapture: Bool { radius > 0 || keepWarm }
+
+    /// Keep the safety watchdog informed without rebuilding SwiftUI state when a
+    /// stationary lid produces the same angle report for many consecutive reads.
+    func noteSensorRead() { lastUpdate = Date() }
+
+    func update(radius value: Double, geometry: EffectGeometry = .identity, keepWarm: Bool = false) {
         self.geometry = geometry
+        self.keepWarm = keepWarm
         lastUpdate = Date()
         radius = value
-        guard value > 0 else { clear(); return }
         renderer?.setEffect(radius: value * backingScale, geometry: geometry)
+        if value <= 0 { window?.alphaValue = 0 }
+        guard shouldCapture else { clear(); return }
         guard !starting, stream == nil else { return }
         starting = true
         generation += 1
@@ -167,7 +204,7 @@ final class BlurOverlay: NSObject {
                     throw OverlayFailure(LocalizedText(en: "No built-in display found", zh: "未找到内置显示器"))
                 }
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                guard ticket == self.generation, self.radius > 0 else { return }
+                guard ticket == self.generation, self.shouldCapture else { return }
                 guard let display = content.displays.first(where: { $0.displayID == number.uint32Value }),
                       let ownApp = content.applications.first(where: { $0.processID == ProcessInfo.processInfo.processIdentifier }) else {
                     throw OverlayFailure(LocalizedText(en: "Could not establish a safe display capture; reopen the app", zh: "无法建立安全的显示捕获；请重新打开应用"))
@@ -235,7 +272,8 @@ final class BlurOverlay: NSObject {
                 receiver.start()
                 self.startWatchdog()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-                    guard let self, ticket == self.generation, !self.isVisible else { return }
+                    guard let self, ticket == self.generation, self.shouldCapture,
+                          self.renderer?.hasFrame != true else { return }
                     self.clear()
                     self.onError?(LocalizedText(en: "No screen frames received; check Screen Recording permission and retry", zh: "未收到屏幕画面，请检查屏幕录制权限后重试"))
                 }
@@ -263,6 +301,7 @@ final class BlurOverlay: NSObject {
             DebugLog.shared.log("overlay clear window=\(window != nil) renderer=\(renderer != nil) stream=\(stream != nil)")
         }
         radius = 0
+        keepWarm = false
         generation += 1
         starting = false
         watchdog?.invalidate()
