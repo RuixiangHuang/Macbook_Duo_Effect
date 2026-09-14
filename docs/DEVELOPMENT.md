@@ -35,7 +35,7 @@ after lock, sleep or wake.
 
 ## Effect model
 
-The bottom hinge and picture height stay fixed. Closing progressively narrows the top edge using the original taper curve, without the old vertical shrink-then-stretch. Perspective strength blends from flat to full taper. Smoothstep closing progress fades the image to black and increases blur. At the clear threshold the overlay is removed immediately. A spatial mask varies blur continuously from 5% of the current maximum radius at the hinge to 100% at the camera edge using CIMaskedVariableBlur. Metal presentation remains at 60 fps.
+The bottom hinge and picture height stay fixed. Closing progressively narrows the top edge using the original taper curve, without the old vertical shrink-then-stretch. Perspective strength blends from flat to full taper. Smoothstep closing progress fades the image to black and increases blur. The blur radius follows the 60 Hz sensor target immediately, while projection and dimming use a short 15ms time-based filter to hide integer-degree sensor steps. Capture prewarms within 12 degrees above the threshold so the first affected frame does not wait for a new ScreenCaptureKit stream. At the clear threshold the overlay is hidden immediately. A spatial mask varies blur continuously from 5% of the current maximum radius at the hinge to 100% at the camera edge using CIMaskedVariableBlur. Metal presentation remains at 60 fps.
 
 - `./scripts/render-check.sh` writes `docs/effect-preview.png`, validating the
   image pipeline on synthetic frames without reading screen content.
@@ -53,7 +53,8 @@ The bottom hinge and picture height stay fixed. Closing progressively narrows th
 on a 3024×1964 synthetic frame. First local measurements were medians of about
 12.9ms and 4.7ms respectively, which is not an end-to-end frame rate.
 `./scripts/metal-check.sh` verifies actual texture orientation. The core tests
-cover both time-based interpolation and instant clearing at the threshold.
+cover immediate blur response, time-based geometry interpolation and instant
+clearing at the threshold.
 
 ## Debug mode
 
