@@ -22,6 +22,7 @@ swiftc -O -swift-version 5 -target arm64-apple-macos14.0 \
   -module-cache-path /tmp/duo-swift-cache Sources/*.swift \
   -framework AppKit -framework SwiftUI -framework IOKit \
   -framework ScreenCaptureKit -framework CoreImage -framework Metal -framework MetalKit \
+  -framework AVFoundation -framework Vision \
   -o "$APP/Contents/MacOS/DuoEffect"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -38,6 +39,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSScreenCaptureUsageDescription</key><string>在内存中实时模糊内置显示器，不保存或上传屏幕内容。</string>
+<key>NSCameraUsageDescription</key><string>合盖开始时短暂读取摄像头，仅用于估算观看位置以校正 3D 透视。画面只在内存中处理，不保存、不上传。</string>
 </dict></plist>
 PLIST
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"

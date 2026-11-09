@@ -13,7 +13,7 @@ func render(_ language: Language, to path: String) {
     let model = AppModel()
     model.permission = true
     model.angle = 103
-    let size = NSSize(width: 480, height: 660)
+    let size = NSSize(width: 480, height: 900)
     let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -20_000, y: -20_000), size: size),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.appearance = NSAppearance(named: .aqua)

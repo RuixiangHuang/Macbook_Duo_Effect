@@ -20,14 +20,78 @@ final class AppModel: ObservableObject {
     @Published var perspective = 1.0 {
         didSet { UserDefaults.standard.set(perspective, forKey: "perspective"); onChange?() }
     }
+    @Published var calibrating = false
+    @Published var eyeCalibrated = false
+    @Published var eyeCentered = false
+    @Published var autoCalibrate = false {
+        didSet { UserDefaults.standard.set(autoCalibrate, forKey: "autoCalibrate") }
+    }
+    /// Lid offsets in millimetres. The preset comes from Apple's published
+    /// dimensions; "use detected" keeps it, manual values override it when a
+    /// lid has been measured directly.
+    @Published var useDetectedLidGeometry = true {
+        didSet { UserDefaults.standard.set(useDetectedLidGeometry, forKey: "useDetectedLidGeometry"); onChange?() }
+    }
+    @Published var lidHingeDropMM = LidGeometry.hingeDropMillimetres {
+        didSet { UserDefaults.standard.set(lidHingeDropMM, forKey: "lidHingeDropMM"); onChange?() }
+    }
+    @Published var lidStandoffMM = LidGeometry.standoffMillimetres {
+        didSet { UserDefaults.standard.set(lidStandoffMM, forKey: "lidStandoffMM"); onChange?() }
+    }
+    @Published var lidCameraInsetMM = LidGeometry.cameraInsetMillimetres {
+        didSet { UserDefaults.standard.set(lidCameraInsetMM, forKey: "lidCameraInsetMM"); onChange?() }
+    }
+    @Published var lidCameraRecessMM = LidGeometry.cameraRecessMillimetres {
+        didSet { UserDefaults.standard.set(lidCameraRecessMM, forKey: "lidCameraRecessMM"); onChange?() }
+    }
+    /// Shown in settings so the preset's provenance is visible.
+    let detectedModelName = MachineModel.name(for: MachineModel.identifier)
+    /// The offsets the projection actually uses, converted with the measured
+    /// active height of this panel.
+    func lidMetrics(screenHeightMillimetres: Double) -> LidMetrics {
+        if useDetectedLidGeometry {
+            return LidMetrics(hingeDropMM: LidGeometry.hingeDropMillimetres,
+                              standoffMM: LidGeometry.standoffMillimetres,
+                              cameraInsetMM: LidGeometry.cameraInsetMillimetres,
+                              cameraRecessMM: LidGeometry.cameraRecessMillimetres,
+                              screenHeightMillimetres: screenHeightMillimetres)
+        }
+        return LidMetrics(hingeDropMM: lidHingeDropMM, standoffMM: lidStandoffMM,
+                          cameraInsetMM: lidCameraInsetMM, cameraRecessMM: lidCameraRecessMM,
+                          screenHeightMillimetres: screenHeightMillimetres)
+    }
+    /// Measured (or nominal) viewer eye position driving the 3D projection.
+    var eyePose = EyePose.nominal
+    var eyeStatusText: String {
+        if calibrating { return t("Looking for your face…", "正在寻找面部…") }
+        if eyeCalibrated {
+            return t("Your position is frozen from this seat. Click Calibrate again if you move.",
+                     "已冻结当前座位的位置。换位置后请再次校准。")
+        }
+        if eyeCentered {
+            return t("Using a centered viewer, as chosen. Calibrate to freeze your actual seat instead.",
+                     "正在使用居中观看位置（已选择）。点击“校准”可改为冻结实际座位。")
+        }
+        return t("Centered viewer assumed (about 50 cm). Sit where you usually watch and click Calibrate to freeze your position.",
+                 "默认居中观看（约 50 厘米）。请坐到常坐的位置后点击“校准”以冻结观看位置。")
+    }
     var onChange: (() -> Void)?
     var requestPermission: (() -> Void)?
     var preview: (() -> Void)?
     var retry: (() -> Void)?
     var quit: (() -> Void)?
+    var calibrateEye: (() -> Void)?
+    var assumeCentered: (() -> Void)?
     init() {
         let defaults = UserDefaults.standard
-        defaults.register(defaults: ["enabled": true, "threshold": 90.0, "maximum": 32.0, "perspective": 1.0])
+        defaults.register(defaults: ["enabled": true, "threshold": 90.0, "maximum": 32.0, "perspective": 1.0,
+                                     "eyeX": 0.0, "eyeY": 1.3, "eyeZ": 1.6,
+                                     "eyeCalibrated": false, "eyeCentered": false, "autoCalibrate": false,
+                                     "useDetectedLidGeometry": true,
+                                     "lidHingeDropMM": LidGeometry.hingeDropMillimetres,
+                                     "lidStandoffMM": LidGeometry.standoffMillimetres,
+                                     "lidCameraInsetMM": LidGeometry.cameraInsetMillimetres,
+                                     "lidCameraRecessMM": LidGeometry.cameraRecessMillimetres])
         enabled = defaults.bool(forKey: "enabled")
         let x = defaults.double(forKey: "threshold")
         threshold = x.isFinite ? min(140, max(10, x)) : 90
@@ -35,6 +99,28 @@ final class AppModel: ObservableObject {
         maximum = blur.isFinite ? min(60, max(1, blur)) : 32
         let depth = defaults.double(forKey: "perspective")
         perspective = depth.isFinite ? min(1, max(0, depth)) : 1
+        let ex = defaults.double(forKey: "eyeX")
+        var ey = defaults.double(forKey: "eyeY")
+        let ez = defaults.double(forKey: "eyeZ")
+        // Older builds stored the centred pose with the eye level with the
+        // hinge, which never hides the picture's top; migrate it to the
+        // seated height.
+        if ey == 0, defaults.bool(forKey: "eyeCentered") { ey = 1.3 }
+        if ex.isFinite, ey.isFinite, ez.isFinite, ez > 0.2 {
+            eyePose = EyePose(x: ex, y: ey, z: ez)
+        }
+        eyeCalibrated = defaults.bool(forKey: "eyeCalibrated")
+        eyeCentered = defaults.bool(forKey: "eyeCentered")
+        autoCalibrate = defaults.bool(forKey: "autoCalibrate")
+        useDetectedLidGeometry = defaults.bool(forKey: "useDetectedLidGeometry")
+        let hingeMM = defaults.double(forKey: "lidHingeDropMM")
+        if hingeMM.isFinite { lidHingeDropMM = min(20, max(0, hingeMM)) }
+        let standoffMM = defaults.double(forKey: "lidStandoffMM")
+        if standoffMM.isFinite { lidStandoffMM = min(20, max(0, standoffMM)) }
+        let insetMM = defaults.double(forKey: "lidCameraInsetMM")
+        if insetMM.isFinite { lidCameraInsetMM = min(30, max(0, insetMM)) }
+        let recessMM = defaults.double(forKey: "lidCameraRecessMM")
+        if recessMM.isFinite { lidCameraRecessMM = min(20, max(0, recessMM)) }
     }
     var stateText: String {
         if !enabled { return t("Effect paused", "效果已暂停") }
@@ -51,6 +137,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private let sensor = LidSensor()
     private let sensorQueue = DispatchQueue(label: "local.macbookduo.sensor", qos: .userInitiated)
+    private var angleFilter = AngleFilter()
     private var sensorTimer: DispatchSourceTimer?
     private var permissionTimer: Timer?
     private let overlay = BlurOverlay()
@@ -67,6 +154,15 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var observers: [NSObjectProtocol] = []
     private var shuttingDown = false
     private var lastEffectActive = false
+    /// Degrees above the clear threshold where capture warms up, so the fold
+    /// starts on live frames instead of a cold-capture pop-in.
+    private let armBand = 15.0
+    private let headTracker = HeadTracker()
+    /// Set while the lid is below 40°, consumed by the first reopening past
+    /// 75° so a gradual reopen still counts as one closed session.
+    private var lidClosedSinceReopen = false
+    private var reopenCalibrationTimer: DispatchWorkItem?
+    private var reopenCalibrated = false
     private var debugItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -76,6 +172,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         model.permission = CGPreflightScreenCaptureAccess()
         model.onChange = { [weak self] in self?.apply() }
         model.requestPermission = { [weak self] in self?.authorize() }
+        model.calibrateEye = { [weak self] in self?.calibrateEye() }
+        model.assumeCentered = { [weak self] in self?.assumeCentered() }
         model.preview = { [weak self] in self?.preview() }
         model.retry = { [weak self] in
             self?.model.error = nil
@@ -91,10 +189,18 @@ final class AppController: NSObject, NSApplicationDelegate {
             self?.model.radius = 0
         }
         let timer = DispatchSource.makeTimerSource(queue: sensorQueue)
-        timer.schedule(deadline: .now(), repeating: 1.0 / 30.0)
+        // Poll at the panel's frame rate so ProMotion folds get a fresh
+        // target every display frame; the filter below absorbs the sensor's
+        // one-degree quantization.
+        timer.schedule(deadline: .now(), repeating: 1.0 / 120.0)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
-            let angle = self.sensor.read()
+            // Smooth the quantized report on the sensor queue so the menu bar
+            // readout and the effect both see a continuous angle.
+            let angle = self.angleFilter.update(self.sensor.read())
+            // Keep the tracker's lid angle live so a calibration straddling a
+            // small lid movement still compensates for the camera's ride.
+            self.headTracker.setLidAngle(angle)
             let status = self.sensor.status
             DispatchQueue.main.async {
                 guard !self.shuttingDown else { return }
@@ -103,6 +209,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                 }
                 self.model.angle = angle
                 self.model.sensorStatus = status
+                self.trackReopenForAutoCalibration(angle)
                 self.apply()
             }
         }
@@ -194,6 +301,90 @@ final class AppController: NSObject, NSApplicationDelegate {
     @objc private func toggle() { model.enabled.toggle() }
     @objc private func terminate() { NSApp.terminate(nil) }
 
+    /// Opt-in: after the user reopens the lid and sits still for ten seconds,
+    /// freeze a fresh position once per open session.
+    private func trackReopenForAutoCalibration(_ angle: Double?) {
+        guard let angle else { return }
+        if angle < 40 {
+            // Latch the closed part of the session; the reopen may pass
+            // through the intermediate angles at any speed.
+            lidClosedSinceReopen = true
+            reopenCalibrated = false
+            reopenCalibrationTimer?.cancel()
+            reopenCalibrationTimer = nil
+            return
+        }
+        guard lidClosedSinceReopen, angle > 75,
+              !reopenCalibrated, model.autoCalibrate, model.enabled,
+              reopenCalibrationTimer == nil else { return }
+        lidClosedSinceReopen = false
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, !self.shuttingDown else { return }
+            self.reopenCalibrationTimer = nil
+            guard self.model.autoCalibrate, !self.model.calibrating,
+                  let current = self.model.angle, current > 60 else { return }
+            self.reopenCalibrated = true
+            DebugLog.shared.log("auto-calibrating ten seconds after reopen")
+            self.calibrateEye()
+        }
+        reopenCalibrationTimer = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: item)
+    }
+
+    /// Explicit opt-in to the nominal centered viewer.
+    private func assumeCentered() {
+        model.eyePose = EyePose.nominal
+        model.eyeCalibrated = false
+        model.eyeCentered = true
+        let defaults = UserDefaults.standard
+        defaults.set(0.0, forKey: "eyeX")
+        defaults.set(1.3, forKey: "eyeY")
+        defaults.set(1.6, forKey: "eyeZ")
+        defaults.set(false, forKey: "eyeCalibrated")
+        defaults.set(true, forKey: "eyeCentered")
+        DebugLog.shared.log("eye pose set to centered by user")
+        apply()
+    }
+
+    /// Manual calibration: freezes the viewer's position in 3D space at the
+    /// moment of the click. The camera runs only for this measurement and is
+    /// off at all other times.
+    private func calibrateEye() {
+        guard !model.calibrating else { return }
+        model.calibrating = true
+        let screenHeight = Self.builtInScreenHeightMeters()
+        headTracker.measure(screenHeightMeters: screenHeight,
+                            metrics: model.lidMetrics(screenHeightMillimetres: screenHeight * 1000)) { [weak self] pose in
+            guard let self else { return }
+            self.model.calibrating = false
+            if let pose {
+                self.model.eyePose = pose
+                self.model.eyeCalibrated = true
+                self.model.eyeCentered = false
+                let defaults = UserDefaults.standard
+                defaults.set(pose.x, forKey: "eyeX")
+                defaults.set(pose.y, forKey: "eyeY")
+                defaults.set(pose.z, forKey: "eyeZ")
+                defaults.set(true, forKey: "eyeCalibrated")
+                defaults.set(false, forKey: "eyeCentered")
+                DebugLog.shared.log(String(format: "eye pose calibrated x=%.2f y=%.2f z=%.2f",
+                                           pose.x, pose.y, pose.z))
+            } else {
+                DebugLog.shared.log("eye pose calibration unavailable; keeping previous pose")
+            }
+            self.apply()
+        }
+    }
+
+    private static func builtInScreenHeightMeters() -> Double {
+        guard let screen = BlurOverlay.builtInScreen,
+              let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return 0.3
+        }
+        let height = Double(CGDisplayScreenSize(number.uint32Value).height) / 1000
+        return height > 0.05 ? height : 0.3
+    }
+
     private func apply() {
         guard !shuttingDown else { return }
         if let deadline = previewDeadline, Date() >= deadline { cancelPreview() }
@@ -201,13 +392,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         let angle = model.previewing ? model.threshold * 0.25 : model.angle
         let desired = EffectModel.radius(angle: angle, threshold: model.threshold, maximum: model.maximum,
                                          enabled: model.enabled && model.permission && !sleeping && model.error == nil)
-        // The renderer interpolates all visual properties on its 60 Hz frame clock.
+        // The renderer interpolates all visual properties on its frame clock.
         model.radius = desired
         if (desired > 0) != lastEffectActive {
             lastEffectActive = desired > 0
             DebugLog.shared.log("effect \(lastEffectActive ? "on" : "off") angle=\(angle.map { String(format: "%.1f", $0) } ?? "nil") threshold=\(Int(model.threshold)) permission=\(model.permission) sleeping=\(sleeping)")
         }
-        overlay.update(radius: model.radius, geometry: EffectModel.geometry(angle: angle, threshold: model.threshold, strength: model.perspective))
+        let armed = model.enabled && model.permission && !sleeping && model.error == nil
+        let approaching = armed && !model.previewing
+            && (model.angle.map { $0.isFinite && $0 < model.threshold + armBand } ?? false)
+        let aspect = BlurOverlay.builtInScreen.map { Double($0.frame.width / $0.frame.height) } ?? 1.55
+        let screenHeightMM = Self.builtInScreenHeightMeters() * 1000
+        let metrics = model.lidMetrics(screenHeightMillimetres: screenHeightMM)
+        overlay.update(radius: model.radius, geometry: EffectModel.geometry(angle: angle, threshold: model.threshold, strength: model.perspective, eye: model.eyePose, aspect: aspect, metrics: metrics), approaching: approaching)
         refreshMenuTitles()
     }
 
@@ -236,10 +433,14 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc func showSettings() {
         if settings == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 660),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 900),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             window.title = "Duo Effect"
-            window.titlebarAppearsTransparent = true
+            // A standard title bar keeps the content — including the enable
+            // toggle — below the drag region. With a transparent title bar the
+            // SwiftUI content sat under it and the toggle could not be clicked.
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = false
             window.isReleasedWhenClosed = false
             window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 2)
             window.contentView = NSHostingView(rootView: SettingsView(model: model))
@@ -273,7 +474,21 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 }
 
+private func lidField(_ title: String, value: Binding<Double>, accent: Color) -> some View {
+    HStack(spacing: 6) {
+        Text(title).font(.caption).foregroundStyle(.secondary)
+        Spacer(minLength: 4)
+        TextField("0", value: value, format: .number.precision(.fractionLength(1)))
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 64)
+            .multilineTextAlignment(.trailing)
+            .tint(accent)
+        Text("mm").font(.caption2).foregroundStyle(.secondary)
+    }
+}
+
 struct SettingsView: View {
+    @State private var showLidAdvanced = false
     @ObservedObject var model: AppModel
     @ObservedObject private var localization = Localization.shared
     private let accent = Color(red: 0.45, green: 0.43, blue: 0.91)
@@ -339,8 +554,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $model.threshold, in: 10...140, step: 1).tint(accent)
                     .accessibilityLabel(t("Clear threshold angle", "清晰阈值角度"))
-                Text(t("\(Int(model.threshold))° is the clear threshold; closing further narrows the top edge and fades the picture.",
-                       "角度 ≥ \(Int(model.threshold))° 时清晰；合盖时梯形顶边逐渐收窄，并淡出、虚化。"))
+                Text(t("\(Int(model.threshold))° is the clear threshold; closing further folds the screen over the image fixed in space, using your measured eye position.",
+                       "角度 ≥ \(Int(model.threshold))° 时清晰；合盖时屏幕以你测得的眼睛位置，在固定的画面之上折叠。"))
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Label(t("Maximum blur", "最大模糊强度"), systemImage: "drop.halffull")
@@ -356,17 +571,82 @@ struct SettingsView: View {
                 }
                 Slider(value: $model.perspective, in: 0...1, step: 0.05).tint(accent)
                     .accessibilityLabel(t("Perspective strength", "透视强度"))
-                Text(t("0% keeps the image flat and only dims and blurs; 100% applies the full top-edge taper.",
-                       "0% 画面不变形、只暗化和模糊；100% 完整应用梯形收窄。"))
+                Text(t("Head-coupled off-axis projection: the image stays fixed in space and the screen is a viewport moving over it. 0% keeps the screen flat and only dims and blurs.",
+                       "头动耦合的离轴透视：画面固定在空间中，屏幕作为视口在其上移动。0% 屏幕不变形、只暗化和模糊。"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Label(t("Viewing position", "观看位置"), systemImage: "person.crop.circle")
+                    Spacer()
+                    Button(action: { model.assumeCentered?() }) {
+                        Text(t("Assume centered", "视为居中"))
+                    }
+                    .disabled(model.calibrating)
+                    Button(action: { model.calibrateEye?() }) {
+                        Text(model.calibrating ? t("Measuring…", "测量中…") : t("Calibrate", "校准"))
+                    }
+                    .disabled(model.calibrating)
+                }
+                Text(model.eyeStatusText)
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Label(t("Auto-calibrate after reopening", "重新打开后自动校准"), systemImage: "arrow.clockwise")
+                    Spacer()
+                    Toggle("", isOn: $model.autoCalibrate).labelsHidden().toggleStyle(.switch).tint(accent)
+                        .accessibilityLabel(t("Auto-calibrate after reopening", "重新打开后自动校准"))
+                }
+                Text(t("Off by default. When on, ten seconds after you reopen the lid and sit still, the camera measures your position once and turns off again.",
+                       "默认关闭。开启后，重新打开屏幕并静坐十秒时会自动测量一次观看位置，随后摄像头关闭。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Divider().padding(.vertical, 2)
+                HStack {
+                    Label(t("Detected model", "检测到的机型"), systemImage: "ruler")
+                    Spacer()
+                    Text(model.detectedModelName).foregroundStyle(.secondary)
+                }
+                Text(t("Hinge, standoff and camera offsets are preset from Apple's published display and body dimensions.",
+                       "转轴、屏幕间距和摄像头偏移按 Apple 公布的屏幕与机身尺寸预设。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                DisclosureGroup(isExpanded: $showLidAdvanced) {
+                    Toggle(t("Override detected values", "覆盖检测值"), isOn: Binding(
+                        get: { !model.useDetectedLidGeometry },
+                        set: { model.useDetectedLidGeometry = !$0 }))
+                        .toggleStyle(.switch).tint(accent)
+                        .accessibilityLabel(t("Override detected hinge geometry", "覆盖检测到的转轴尺寸"))
+                    Text(model.useDetectedLidGeometry
+                         ? t("Manual values replace the detected preset. Measure them against the lid's hinge axis.",
+                             "手动数值将替代检测预设。请以转轴为基准测量。")
+                         : t("Measuring against the hinge axis: the display's bottom row, the display surface, and the camera in the notch, all in millimetres.",
+                             "以转轴为基准测量：显示区底行、显示表面、刘海内摄像头，单位均为毫米。"))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if !model.useDetectedLidGeometry {
+                        HStack(spacing: 10) {
+                            lidField(t("Hinge drop", "转轴下沿"), value: $model.lidHingeDropMM, accent: accent)
+                            lidField(t("Standoff", "屏幕间距"), value: $model.lidStandoffMM, accent: accent)
+                        }
+                        HStack(spacing: 10) {
+                            lidField(t("Camera inset", "摄像头内缩"), value: $model.lidCameraInsetMM, accent: accent)
+                            lidField(t("Camera recess", "摄像头凹陷"), value: $model.lidCameraRecessMM, accent: accent)
+                        }
+                        Button(t("Reset to detected", "恢复检测值")) {
+                            model.lidHingeDropMM = LidGeometry.hingeDropMillimetres
+                            model.lidStandoffMM = LidGeometry.standoffMillimetres
+                            model.lidCameraInsetMM = LidGeometry.cameraInsetMillimetres
+                            model.lidCameraRecessMM = LidGeometry.cameraRecessMillimetres
+                            model.useDetectedLidGeometry = true
+                        }
+                        .buttonStyle(.borderless).font(.caption)
+                    }
+                } label: {
+                    Text(t("Advanced override", "高级覆盖")).font(.caption)
+                }
             }.padding(.vertical, 2)
 
             if !model.permission {
                 VStack(alignment: .leading, spacing: 8) {
                     Label(t("Screen Recording permission required", "需要屏幕录制权限"),
                           systemImage: "rectangle.dashed.badge.record").font(.callout.weight(.medium))
-                    Text(t("Used to blur the built-in display live. Frames stay in memory — nothing is saved or uploaded. If the effect does not start after granting, quit and reopen the app.",
-                           "用于实时模糊内置屏幕。画面仅在内存中处理，不保存、不上传。授权后若未生效，请退出并重新打开。"))
+                    Text(t("Used to blur the built-in display live. Frames stay in memory — nothing is saved or uploaded. The camera runs only when you click Calibrate, to freeze your viewing position; those frames also stay in memory. If the effect does not start after granting, quit and reopen the app.",
+                           "用于实时模糊内置屏幕。画面仅在内存中处理，不保存、不上传。仅在你点击“校准”时短暂读取摄像头，以冻结观看位置；画面同样仅在内存中处理。授权后若未生效，请退出并重新打开。"))
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Button(t("Grant Screen Recording…", "授权屏幕录制…")) { model.requestPermission?() }
                         .buttonStyle(.borderedProminent).tint(accent)
@@ -392,6 +672,6 @@ struct SettingsView: View {
                    "仅内置屏幕 · 菜单栏随时暂停 · 保留正常合盖睡眠"))
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
         }
-        .padding(26).frame(width: 480, height: 660).background(Color(nsColor: .windowBackgroundColor))
+        .padding(26).frame(width: 480, height: 900).background(Color(nsColor: .windowBackgroundColor))
     }
 }

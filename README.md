@@ -16,12 +16,14 @@ built-in display as you close it, with controls in the menu bar.
 <hr>
 
 - **Real lid angle:** Reads the hinge sensor built into Apple Silicon MacBooks, so the effect follows your hand as you close the lid.
-- **Live screen content:** Captures the built-in display with ScreenCaptureKit and re-renders it on the GPU with Metal at native Retina resolution and 60 fps.
+- **Collapsing viewport:** The picture is fixed in space; the screen is the window you look through. As the lid closes, the panel tilts below the light rays from the picture's top, so the top of the screen leaves view from the first degree of the fold, while the middle and lower parts keep showing through the tilting panel. Black only where no light could get through.
+- **Live screen content:** Captures the built-in display with ScreenCaptureKit and re-renders it on the GPU with Metal at native Retina resolution and the display's full refresh rate — 120 fps on ProMotion.
 - **Adjustable:** Pick the angle where the effect begins and how strong the blur gets. English and 简体中文 interface, switchable in the app.
+- **Knows where you sit:** click **Calibrate** and your eye position is frozen in 3D space — the camera runs only for that moment, then turns off. **Assume centered** opts into the nominal centered viewer. An opt-in setting can re-measure ten seconds after you reopen the lid and sit still.
 - **Stays out of your way:** Clicks pass straight through to your apps, external displays are untouched, and normal lid-close sleep is preserved.
 
 > [!NOTE]
-> Nothing is recorded to disk, no audio is captured, and nothing goes over the network. Screen frames stay in memory only while the effect is active.
+> Nothing is recorded to disk, no audio is captured, and nothing goes over the network. Screen frames stay in memory only while the effect is active. The camera runs only when you click **Calibrate** — about a second, frozen into a position estimate, frames discarded immediately and never saved or sent anywhere. The opt-in auto-calibration (off by default) does the same after you reopen the lid and sit still for ten seconds. Skip both and the fold uses the centered viewer.
 
 ## Download
 
@@ -35,7 +37,7 @@ The app shows live sensor status, so you will know right away if your machine is
 1. Open **Duo Effect**. The settings window appears and the menu bar shows the live lid angle.
 2. Click **Grant Screen Recording…** and allow **Duo Effect** in System Settings. This is what lets the app blur what is on screen.
 3. If macOS asks you to reopen the app, quit it and open it again.
-4. Slowly close the lid. Below the **Clear threshold** (90° by default) the picture tilts, dims and blurs; open the lid back past the threshold and it snaps back to normal.
+4. Slowly close the lid. Below the **Clear threshold** (90° by default) the window collapses over the frozen picture, dimming and blurring it; open the lid back past the threshold and it snaps back to normal.
 
 Use the menu bar icon to pause, quit, or turn on debug logging. Settings are saved automatically.
 

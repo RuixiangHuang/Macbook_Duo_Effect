@@ -13,12 +13,15 @@ enum EffectProcessor {
     static func image(_ input: CIImage, radius: Double, geometry: EffectGeometry) -> CIImage {
         let width = input.extent.width
         let height = input.extent.height
-        let inset = width * (1 - geometry.topWidth) / 2
+        // Pinhole viewport: the four vectors are where the image's corners
+        // land on the panel, so the fixed image is projected through the eye
+        // onto the tilting screen. Nothing is stretched to fit and no mask is
+        // used: black appears only where the panel looks past the image.
         let transformed = input.applyingFilter("CIPerspectiveTransform", parameters: [
-            "inputTopLeft": CIVector(x: inset, y: height * geometry.topHeight),
-            "inputTopRight": CIVector(x: width - inset, y: height * geometry.topHeight),
-            "inputBottomLeft": CIVector(x: 0, y: 0),
-            "inputBottomRight": CIVector(x: width, y: 0)
+            "inputTopLeft": CIVector(x: width * geometry.topLeftX, y: height * geometry.topY),
+            "inputTopRight": CIVector(x: width * geometry.topRightX, y: height * geometry.topY),
+            "inputBottomLeft": CIVector(x: width * geometry.bottomLeftX, y: height * geometry.bottomY),
+            "inputBottomRight": CIVector(x: width * geometry.bottomRightX, y: height * geometry.bottomY)
         ])
         let background = CIImage(color: CIColor.black).cropped(to: input.extent)
         let projected = transformed.composited(over: background).cropped(to: input.extent)
@@ -31,7 +34,7 @@ enum EffectProcessor {
             "inputColor1": CIColor.white
         ])!.outputImage!.cropped(to: input.extent)
         let light = 1 - geometry.darkness
-        let output = projected.clampedToExtent()
+        let dimmed = projected.clampedToExtent()
             .applyingFilter("CIMaskedVariableBlur", parameters: [kCIInputRadiusKey: radius, "inputMask": mask])
             .cropped(to: input.extent)
             .applyingFilter("CIColorMatrix", parameters: [
@@ -39,6 +42,19 @@ enum EffectProcessor {
                 "inputGVector": CIVector(x: 0, y: light, z: 0, w: 0),
                 "inputBVector": CIVector(x: 0, y: 0, z: light, w: 0)
             ])
-        return output
+        guard geometry.crease > 0.001 else { return dimmed }
+        // Crease shadow: a dark seam hugging the hinge, scaling with the fold
+        // rotation like the shading model's S(θ). Twelve percent of the
+        // height, up to 28% darker at the very seam.
+        let depth = 0.28 * min(1, geometry.crease)
+        let crease = CIFilter(name: "CILinearGradient", parameters: [
+            "inputPoint0": CIVector(x: input.extent.midX, y: input.extent.minY),
+            "inputPoint1": CIVector(x: input.extent.midX, y: input.extent.minY + height * 0.12),
+            "inputColor0": CIColor(red: 1 - depth, green: 1 - depth, blue: 1 - depth, alpha: 1),
+            "inputColor1": CIColor(red: 1, green: 1, blue: 1, alpha: 1)
+        ])!.outputImage!.cropped(to: input.extent)
+        return dimmed.applyingFilter("CIMultiplyCompositing", parameters: [
+            "inputBackgroundImage": crease
+        ]).cropped(to: input.extent)
     }
 }
