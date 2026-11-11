@@ -4,7 +4,8 @@ import CoreImage
 import Metal
 import MetalKit
 
-/// Capture only replaces the latest buffer. MetalKit schedules smooth 60 Hz draws;
+/// Capture only replaces the latest buffer. MetalKit schedules draws at the
+/// display's full refresh rate (120 Hz on ProMotion, clamped elsewhere);
 /// there is no per-frame CGImage allocation, CPU readback or main-queue image upload.
 final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDelegate {
     let queue = DispatchQueue(label: "local.macbookduo.frames", qos: .userInteractive)
@@ -16,9 +17,9 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
     private var radius = 0.0
     private var geometry = EffectGeometry.identity
     private var stopped = false
-    private var presented = false
     private var motion = EffectMotion()
     private var lastFrameTime = 0.0
+    private var receivedFrames = false
     private weak var view: MTKView?
     private let deliver: () -> Void
     private let fail: (LocalizedText) -> Void
@@ -42,7 +43,15 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
         lock.lock()
         self.radius = value
         self.geometry = geometry
+        // Every fold starts from rest; otherwise a re-reveal would flash the
+        // previous fold's blur strength before the interpolation catches up.
+        if value <= 0 { motion = EffectMotion() }
         lock.unlock()
+    }
+    func hasFrames() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return receivedFrames
     }
     func start() {
         view?.isPaused = false
@@ -66,6 +75,7 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
         guard !stopped else { lock.unlock(); return }
         if status == .complete {
             latest = sampleBuffer.imageBuffer
+            receivedFrames = true
             lock.unlock()
         } else if status == .blank || status == .suspended || status == .stopped {
             latest = nil
@@ -108,15 +118,18 @@ final class FrameRenderer: NSObject, SCStreamOutput, SCStreamDelegate, MTKViewDe
                 // GPU; releasing the semaphore with a count outstanding makes
                 // libdispatch trap the whole process.
                 budget.signal()
-                // Only anomalies: a per-frame line at 60fps buries the lifecycle
+                // Only anomalies: a per-frame line buries the lifecycle
                 // events this log exists for.
                 if finished.status != .completed {
                     DebugLog.shared.log("frame ended status=\(finished.status.rawValue) error=\(finished.error?.localizedDescription ?? "none")")
                 }
                 guard let self else { return }
                 self.lock.lock()
-                let shouldDeliver = !self.stopped && !self.presented && finished.status == .completed
-                if shouldDeliver { self.presented = true }
+                // Deliver every completed frame while a fold is active: the
+                // consumer reveals the overlay only on a frame that was just
+                // rendered for this fold, so a re-fold never exposes the
+                // previous fold's last drawable.
+                let shouldDeliver = !self.stopped && finished.status == .completed
                 let shouldFail = !self.stopped && finished.status == .error
                 self.lock.unlock()
                 if shouldDeliver { DispatchQueue.main.async { self.deliver() } }
@@ -139,6 +152,8 @@ final class BlurOverlay: NSObject {
     private var lastUpdate = Date.distantPast
     private var backingScale = 1.0
     private var watchdog: Timer?
+    private var disarmTimer: Timer?
+    private var revealedOnce = false
     var onError: ((LocalizedText) -> Void)?
     var onFirstFrame: (() -> Void)?
     var isVisible: Bool { window?.isVisible == true && (window?.alphaValue ?? 0) > 0 }
@@ -150,14 +165,37 @@ final class BlurOverlay: NSObject {
         }
     }
 
-    func update(radius value: Double, geometry: EffectGeometry = .identity) {
+    func update(radius value: Double, geometry: EffectGeometry = .identity, approaching: Bool = false) {
         self.geometry = geometry
         lastUpdate = Date()
         radius = value
-        guard value > 0 else { clear(); return }
-        renderer?.setEffect(radius: value * backingScale, geometry: geometry)
-        guard !starting, stream == nil else { return }
-        starting = true
+        if value > 0 {
+            renderer?.setEffect(radius: value * backingScale, geometry: geometry)
+            disarmTimer?.invalidate()
+            disarmTimer = nil
+            // Already running or starting: the next completed frame reveals
+            // the overlay through `deliver`, so the window never shows the
+            // previous fold's drawable.
+            if starting || stream != nil { return }
+            starting = true
+        } else {
+            // Fold ended: hide at once (the screen snaps back), reset the
+            // motion so the next fold starts from rest, and keep the capture
+            // warm while the lid hovers near the threshold.
+            renderer?.setEffect(radius: 0, geometry: .identity)
+            if stream != nil || starting {
+                hide()
+                if approaching {
+                    disarmTimer?.invalidate()
+                    disarmTimer = nil
+                } else if disarmTimer == nil {
+                    scheduleDisarm()
+                }
+                return
+            }
+            guard approaching else { return }
+            starting = true // Arm: start capture before the fold begins.
+        }
         generation += 1
         let ticket = generation
         Task { @MainActor in
@@ -167,7 +205,8 @@ final class BlurOverlay: NSObject {
                     throw OverlayFailure(LocalizedText(en: "No built-in display found", zh: "未找到内置显示器"))
                 }
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                guard ticket == self.generation, self.radius > 0 else { return }
+                // Armed starts run with radius 0; only a generation change aborts.
+                guard ticket == self.generation else { return }
                 guard let display = content.displays.first(where: { $0.displayID == number.uint32Value }),
                       let ownApp = content.applications.first(where: { $0.processID == ProcessInfo.processInfo.processIdentifier }) else {
                     throw OverlayFailure(LocalizedText(en: "Could not establish a safe display capture; reopen the app", zh: "无法建立安全的显示捕获；请重新打开应用"))
@@ -178,9 +217,13 @@ final class BlurOverlay: NSObject {
                 // Preserve Retina detail even when the blur radius approaches zero.
                 let scale = screen.backingScaleFactor
                 self.backingScale = scale
+                // Capture and present at the panel's own refresh rate: 120 on
+                // ProMotion so live content and the fold move in step with the
+                // display instead of being held at 60.
+                let maxFPS = max(60, screen.maximumFramesPerSecond)
                 config.width = Int(screen.frame.width * scale)
                 config.height = Int(screen.frame.height * scale)
-                config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+                config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(maxFPS))
                 config.queueDepth = 3
                 config.pixelFormat = kCVPixelFormatType_32BGRA
                 config.showsCursor = false
@@ -202,7 +245,8 @@ final class BlurOverlay: NSObject {
                 metalView.framebufferOnly = false
                 metalView.colorPixelFormat = .bgra8Unorm
                 metalView.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
-                metalView.preferredFramesPerSecond = 60
+                // Match the capture: 120 on ProMotion, clamped elsewhere.
+                metalView.preferredFramesPerSecond = maxFPS
                 metalView.isPaused = true
                 metalView.enableSetNeedsDisplay = false
                 metalView.autoResizeDrawable = false
@@ -213,8 +257,7 @@ final class BlurOverlay: NSObject {
                 panel.orderFrontRegardless()
                 let receiver = FrameRenderer(view: metalView, device: device, commands: commands, deliver: { [weak self] in
                     guard let self, ticket == self.generation, self.radius > 0 else { return }
-                    self.window?.alphaValue = 1
-                    self.onFirstFrame?()
+                    self.reveal()
                 }, fail: { [weak self] error in
                     guard let self, ticket == self.generation else { return }
                     self.clear()
@@ -235,7 +278,10 @@ final class BlurOverlay: NSObject {
                 receiver.start()
                 self.startWatchdog()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-                    guard let self, ticket == self.generation, !self.isVisible else { return }
+                    // Armed-but-hidden is fine as long as frames are arriving;
+                    // only a capture that never produced a frame is an error.
+                    guard let self, ticket == self.generation, !self.isVisible,
+                          !(self.renderer?.hasFrames() ?? false) else { return }
                     self.clear()
                     self.onError?(LocalizedText(en: "No screen frames received; check Screen Recording permission and retry", zh: "未收到屏幕画面，请检查屏幕录制权限后重试"))
                 }
@@ -248,6 +294,35 @@ final class BlurOverlay: NSObject {
             }
         }
     }
+
+    private func reveal() {
+        guard let window, window.alphaValue < 1 else { return }
+        // The overlay must be the only thing on screen from its first visible
+        // frame. Any window transparency shows the live screen through the
+        // effect, which reads as two images stacked on top of each other. The
+        // reveal is seamless without a fade because the fold starts from rest:
+        // the frame that just completed is a near-identity replica of the
+        // screen.
+        window.alphaValue = 1
+        if !revealedOnce {
+            revealedOnce = true
+            onFirstFrame?()
+        }
+    }
+
+    private func hide() {
+        guard let window, window.alphaValue > 0 else { return }
+        window.alphaValue = 0
+    }
+
+    /// Tear the capture down after the lid has stayed away from the threshold,
+    /// so hovering near the fold point does not keep the stream running.
+    private func scheduleDisarm() {
+        disarmTimer = Timer(timeInterval: 2, target: self, selector: #selector(disarm), userInfo: nil, repeats: false)
+        RunLoop.main.add(disarmTimer!, forMode: .common)
+    }
+
+    @objc private func disarm() { clear() }
 
     private func startWatchdog() {
         watchdog = Timer(timeInterval: 0.5, target: self, selector: #selector(checkSensorFreshness), userInfo: nil, repeats: true)
@@ -267,6 +342,9 @@ final class BlurOverlay: NSObject {
         starting = false
         watchdog?.invalidate()
         watchdog = nil
+        disarmTimer?.invalidate()
+        disarmTimer = nil
+        revealedOnce = false
         window?.orderOut(nil)
         window?.contentView?.layer?.contents = nil
         window = nil
